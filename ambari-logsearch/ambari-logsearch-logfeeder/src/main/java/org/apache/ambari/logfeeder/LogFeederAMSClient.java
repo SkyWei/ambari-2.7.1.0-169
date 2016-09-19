@@ -23,6 +23,7 @@ import org.apache.hadoop.metrics2.sink.timeline.AbstractTimelineMetricsSink;
 import org.apache.hadoop.metrics2.sink.timeline.TimelineMetrics;
 import org.apache.log4j.Logger;
 
+// TODO: Refactor for failover
 public class LogFeederAMSClient extends AbstractTimelineMetricsSink {
   private static final Logger logger = Logger.getLogger(LogFeederAMSClient.class);
 
@@ -41,7 +42,7 @@ public class LogFeederAMSClient extends AbstractTimelineMetricsSink {
   }
 
   @Override
-  public String getCollectorUri() {
+  public String getCollectorUri(String host) {
     return collectorHosts;
   }
 
@@ -52,8 +53,28 @@ public class LogFeederAMSClient extends AbstractTimelineMetricsSink {
   }
 
   @Override
+  protected String getZookeeperQuorum() {
+    return null;
+  }
+
+  @Override
+  protected String getConfiguredCollectors() {
+    return null;
+  }
+
+  @Override
+  protected String getHostname() {
+    return null;
+  }
+
+  @Override
   protected boolean emitMetrics(TimelineMetrics metrics) {
     return super.emitMetrics(metrics);
+  }
+
+  @Override
+  protected String getCollectorProtocol() {
+    return null;
   }
 
 }
