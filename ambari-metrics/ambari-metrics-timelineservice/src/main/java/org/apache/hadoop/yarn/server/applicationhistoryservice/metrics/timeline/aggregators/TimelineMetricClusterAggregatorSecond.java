@@ -24,6 +24,9 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.metrics2.sink.timeline.PostProcessingUtil;
 import org.apache.hadoop.metrics2.sink.timeline.TimelineMetric;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.PhoenixHBaseAccessor;
+import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.availability.AggregationTaskRunner;
+import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.availability.AggregationTaskRunner.AGGREGATOR_NAME;
+import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.availability.TimelineMetricHAController;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.discovery.TimelineMetricMetadataManager;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.query.Condition;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.query.DefaultCondition;
@@ -59,7 +62,7 @@ public class TimelineMetricClusterAggregatorSecond extends AbstractTimelineAggre
   private final boolean interpolationEnabled;
 
 
-  public TimelineMetricClusterAggregatorSecond(String aggregatorName,
+  public TimelineMetricClusterAggregatorSecond(AGGREGATOR_NAME aggregatorName,
                                                TimelineMetricMetadataManager metadataManager,
                                                PhoenixHBaseAccessor hBaseAccessor,
                                                Configuration metricsConf,
@@ -70,10 +73,11 @@ public class TimelineMetricClusterAggregatorSecond extends AbstractTimelineAggre
                                                String tableName,
                                                String outputTableName,
                                                Long nativeTimeRangeDelay,
-                                               Long timeSliceInterval) {
+                                               Long timeSliceInterval,
+                                               TimelineMetricHAController haController) {
     super(aggregatorName, hBaseAccessor, metricsConf, checkpointLocation,
       sleepIntervalMillis, checkpointCutOffMultiplier, aggregatorDisabledParam,
-      tableName, outputTableName, nativeTimeRangeDelay);
+      tableName, outputTableName, nativeTimeRangeDelay, haController);
 
     appAggregator = new TimelineMetricAppAggregator(metadataManager, metricsConf);
     this.timeSliceIntervalMillis = timeSliceInterval;
