@@ -223,7 +223,7 @@ public class PhoenixHBaseAccessor {
     tableTTL.put(METRICS_CLUSTER_AGGREGATE_DAILY_TABLE_NAME, metricsConf.get(CLUSTER_DAILY_TABLE_TTL, String.valueOf(730 * 86400))); //2 years
 
     if (cacheEnabled) {
-      LOG.debug("Initialising and starting metrics cache committer thread...");
+      LOG.debug("Initialising and starting Metrics cache committer thread...");
       metricsCommiterThread = new MetricsCacheCommitterThread(this);
       scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
       scheduledExecutorService.scheduleWithFixedDelay(metricsCommiterThread, 0, cacheCommitInterval, TimeUnit.SECONDS);
