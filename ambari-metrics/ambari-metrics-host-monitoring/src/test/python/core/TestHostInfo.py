@@ -138,7 +138,9 @@ class TestHostInfo(TestCase):
                                                   'read_time', 'write_time'])
     io_mock.return_value = Counters(0, 1, 2, 3, 4, 5)
 
-    hostinfo = HostInfo(MagicMock())
+    c = MagicMock()
+    c.get_disk_metrics_skip_pattern.return_value = None
+    hostinfo = HostInfo(c)
 
     disk_counters = hostinfo.get_combined_disk_io_counters()
 
