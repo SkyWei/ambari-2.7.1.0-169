@@ -19,6 +19,7 @@ package org.apache.ambari.server.upgrade;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,9 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
 
   protected static final String HOST_VERSION_TABLE = "host_version";
   private static final String AMS_ENV = "ams-env";
+  private static final String KAFKA_BROKER = "kafka-broker";
+  private static final String KAFKA_TIMELINE_METRICS_HOST = "kafka.timeline.metrics.host";
+
   /**
    * Logger.
    */
@@ -107,6 +111,7 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
   @Override
   protected void executeDMLUpdates() throws AmbariException, SQLException {
     updateAMSConfigs();
+    updateKafkaConfigs();
   }
 
   protected void updateHostVersionTable() throws SQLException {
@@ -166,6 +171,28 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
     return content;
   }
 
+  protected void updateKafkaConfigs() throws AmbariException {
+    AmbariManagementController ambariManagementController = injector.getInstance(AmbariManagementController.class);
+    Clusters clusters = ambariManagementController.getClusters();
 
+    if (clusters != null) {
+      Map<String, Cluster> clusterMap = clusters.getClusters();
+
+      if (clusterMap != null && !clusterMap.isEmpty()) {
+        for (final Cluster cluster : clusterMap.values()) {
+
+          Config kafkaBrokerConfig = cluster.getDesiredConfigByType(KAFKA_BROKER);
+          if (kafkaBrokerConfig != null) {
+            Map<String, String> kafkaBrokerProperties = kafkaBrokerConfig.getProperties();
+
+            if (kafkaBrokerProperties != null && kafkaBrokerProperties.containsKey(KAFKA_TIMELINE_METRICS_HOST)) {
+              LOG.info("Removing kafka.timeline.metrics.host from kafka-broker");
+              removeConfigurationPropertiesFromCluster(cluster, KAFKA_BROKER, Collections.singleton("kafka.timeline.metrics.host"));
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
