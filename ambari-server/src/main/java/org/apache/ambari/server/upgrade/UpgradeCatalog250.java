@@ -19,6 +19,7 @@ package org.apache.ambari.server.upgrade;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.controller.AmbariManagementController;
+import org.apache.ambari.server.orm.DBAccessor.DBColumnInfo;
 import org.apache.ambari.server.orm.dao.DaoUtils;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
@@ -46,6 +48,12 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
   private static final String AMS_ENV = "ams-env";
   private static final String KAFKA_BROKER = "kafka-broker";
   private static final String KAFKA_TIMELINE_METRICS_HOST = "kafka.timeline.metrics.host";
+
+  public static final String COMPONENT_TABLE = "servicecomponentdesiredstate";
+  public static final String COMPONENT_VERSION_TABLE = "servicecomponent_version";
+  public static final String COMPONENT_VERSION_PK = "PK_sc_version";
+  public static final String COMPONENT_VERSION_FK_COMPONENT = "FK_scv_component_id";
+  public static final String COMPONENT_VERSION_FK_REPO_VERSION = "FK_scv_repo_version_id";
 
   /**
    * Logger.
@@ -95,6 +103,7 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
   @Override
   protected void executeDDLUpdates() throws AmbariException, SQLException {
     updateHostVersionTable();
+    createComponentVersionTable();
   }
 
   /**
@@ -111,6 +120,7 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
   @Override
   protected void executeDMLUpdates() throws AmbariException, SQLException {
     updateAMSConfigs();
+    createRoleAuthorizations();
     updateKafkaConfigs();
   }
 
@@ -169,6 +179,51 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
     }
 
     return content;
+  }
+
+  /**
+   * Create new role authorizations: CLUSTER.RUN_CUSTOM_COMMAND and AMBARI.RUN_CUSTOM_COMMAND
+   *
+   * @throws SQLException
+   */
+  protected void createRoleAuthorizations() throws SQLException {
+    LOG.info("Adding authorizations");
+
+    addRoleAuthorization("CLUSTER.RUN_CUSTOM_COMMAND", "Perform custom cluster-level actions",
+      Arrays.asList("AMBARI.ADMINISTRATOR:AMBARI", "CLUSTER.ADMINISTRATOR:CLUSTER"));
+
+    addRoleAuthorization("AMBARI.RUN_CUSTOM_COMMAND", "Perform custom administrative actions",
+      Collections.singletonList("AMBARI.ADMINISTRATOR:AMBARI"));
+  }
+
+  /**
+   * Creates the servicecomponent_version table
+   *
+   * @throws SQLException
+   */
+  private void createComponentVersionTable() throws SQLException {
+
+    List<DBColumnInfo> columns = new ArrayList<>();
+
+    // Add extension link table
+    LOG.info("Creating {} table", COMPONENT_VERSION_TABLE);
+
+    columns.add(new DBColumnInfo("id", Long.class, null, null, false));
+    columns.add(new DBColumnInfo("component_id", Long.class, null, null, false));
+    columns.add(new DBColumnInfo("repo_version_id", Long.class, null, null, false));
+    columns.add(new DBColumnInfo("state", String.class, 32, null, false));
+    columns.add(new DBColumnInfo("user_name", String.class, 255, null, false));
+    dbAccessor.createTable(COMPONENT_VERSION_TABLE, columns, (String[]) null);
+
+    dbAccessor.addPKConstraint(COMPONENT_VERSION_TABLE, COMPONENT_VERSION_PK, "id");
+
+    dbAccessor.addFKConstraint(COMPONENT_VERSION_TABLE, COMPONENT_VERSION_FK_COMPONENT, "component_id",
+      COMPONENT_TABLE, "id", false);
+
+    dbAccessor.addFKConstraint(COMPONENT_VERSION_TABLE, COMPONENT_VERSION_FK_REPO_VERSION, "repo_version_id",
+      "repo_version", "repo_version_id", false);
+
+    addSequence("servicecomponent_version_id_seq", 0L, false);
   }
 
   protected void updateKafkaConfigs() throws AmbariException {

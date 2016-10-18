@@ -18,6 +18,7 @@
 
 package org.apache.ambari.server.controller;
 
+import org.apache.ambari.server.controller.internal.DeleteStatusMetaData;
 import static org.easymock.EasyMock.capture;
 import static org.easymock.EasyMock.createNiceMock;
 import static org.easymock.EasyMock.createStrictMock;
@@ -8870,11 +8871,10 @@ public class AmbariManagementControllerTest {
   public void testDeleteHostComponentInVariousStates() throws Exception {
     String cluster1 = getUniqueName();
     createCluster(cluster1);
-    clusters.getCluster(cluster1)
-        .setDesiredStackVersion(new StackId("HDP-1.3.1"));
-    String serviceName = "HDFS";
+    clusters.getCluster(cluster1).setDesiredStackVersion(new StackId("HDP-1.3.1"));
+    String hdfs = "HDFS";
     String mapred = "MAPREDUCE";
-    createService(cluster1, serviceName, null);
+    createService(cluster1, hdfs, null);
     createService(cluster1, mapred, null);
     String componentName1 = "NAMENODE";
     String componentName2 = "DATANODE";
@@ -8883,9 +8883,9 @@ public class AmbariManagementControllerTest {
     String componentName5 = "TASKTRACKER";
     String componentName6 = "MAPREDUCE_CLIENT";
 
-    createServiceComponent(cluster1, serviceName, componentName1, State.INIT);
-    createServiceComponent(cluster1, serviceName, componentName2, State.INIT);
-    createServiceComponent(cluster1, serviceName, componentName3, State.INIT);
+    createServiceComponent(cluster1, hdfs, componentName1, State.INIT);
+    createServiceComponent(cluster1, hdfs, componentName2, State.INIT);
+    createServiceComponent(cluster1, hdfs, componentName3, State.INIT);
     createServiceComponent(cluster1, mapred, componentName4, State.INIT);
     createServiceComponent(cluster1, mapred, componentName5, State.INIT);
     createServiceComponent(cluster1, mapred, componentName6, State.INIT);
@@ -8894,19 +8894,19 @@ public class AmbariManagementControllerTest {
 
     addHostToCluster(host1, cluster1);
 
-    createServiceComponentHost(cluster1, serviceName, componentName1, host1, null);
-    createServiceComponentHost(cluster1, serviceName, componentName2, host1, null);
-    createServiceComponentHost(cluster1, serviceName, componentName3, host1, null);
+    createServiceComponentHost(cluster1, hdfs, componentName1, host1, null);
+    createServiceComponentHost(cluster1, hdfs, componentName2, host1, null);
+    createServiceComponentHost(cluster1, hdfs, componentName3, host1, null);
     createServiceComponentHost(cluster1, mapred, componentName4, host1, null);
     createServiceComponentHost(cluster1, mapred, componentName5, host1, null);
     createServiceComponentHost(cluster1, mapred, componentName6, host1, null);
 
     // Install
-    installService(cluster1, serviceName, false, false);
+    installService(cluster1, hdfs, false, false);
     installService(cluster1, mapred, false, false);
 
     Cluster cluster = clusters.getCluster(cluster1);
-    Service s1 = cluster.getService(serviceName);
+    Service s1 = cluster.getService(hdfs);
     Service s2 = cluster.getService(mapred);
     ServiceComponent sc1 = s1.getServiceComponent(componentName1);
     sc1.getServiceComponentHosts().values().iterator().next().setState(State.STARTED);
@@ -8914,7 +8914,7 @@ public class AmbariManagementControllerTest {
     Set<ServiceComponentHostRequest> schRequests = new HashSet<ServiceComponentHostRequest>();
     // delete HC
     schRequests.clear();
-    schRequests.add(new ServiceComponentHostRequest(cluster1, serviceName, componentName1, host1, null));
+    schRequests.add(new ServiceComponentHostRequest(cluster1, hdfs, componentName1, host1, null));
     try {
       controller.deleteHostComponents(schRequests);
       Assert.fail("Expect failure while deleting.");
@@ -8938,13 +8938,120 @@ public class AmbariManagementControllerTest {
     sc6.getServiceComponentHosts().values().iterator().next().setState(State.INIT);
 
     schRequests.clear();
-    schRequests.add(new ServiceComponentHostRequest(cluster1, serviceName, componentName1, host1, null));
-    schRequests.add(new ServiceComponentHostRequest(cluster1, serviceName, componentName2, host1, null));
-    schRequests.add(new ServiceComponentHostRequest(cluster1, serviceName, componentName3, host1, null));
+    schRequests.add(new ServiceComponentHostRequest(cluster1, hdfs, componentName1, host1, null));
+    schRequests.add(new ServiceComponentHostRequest(cluster1, hdfs, componentName2, host1, null));
+    schRequests.add(new ServiceComponentHostRequest(cluster1, hdfs, componentName3, host1, null));
     schRequests.add(new ServiceComponentHostRequest(cluster1, mapred, componentName4, host1, null));
     schRequests.add(new ServiceComponentHostRequest(cluster1, mapred, componentName5, host1, null));
     schRequests.add(new ServiceComponentHostRequest(cluster1, mapred, componentName6, host1, null));
-    controller.deleteHostComponents(schRequests);
+    DeleteStatusMetaData deleteStatusMetaData = controller.deleteHostComponents(schRequests);
+    Assert.assertEquals(0, deleteStatusMetaData.getExceptionForKeys().size());
+  }
+
+  @Test
+  public void testDeleteHostComponentWithForce() throws Exception {
+    String cluster1 = getUniqueName();
+
+    createCluster(cluster1);
+
+    Cluster cluster = clusters.getCluster(cluster1);
+    cluster.setDesiredStackVersion(new StackId("HDP-0.1"));
+
+    String serviceName = "HDFS";
+    createService(cluster1, serviceName, null);
+    String componentName1 = "NAMENODE";
+    String componentName2 = "DATANODE";
+    String componentName3 = "HDFS_CLIENT";
+
+    createServiceComponent(cluster1, serviceName, componentName1, State.INIT);
+    createServiceComponent(cluster1, serviceName, componentName2, State.INIT);
+    createServiceComponent(cluster1, serviceName, componentName3, State.INIT);
+
+    String host1 = getUniqueName();  // Host will belong to the cluster and contain components
+
+    addHostToCluster(host1, cluster1);
+
+    // Add components to host1
+    createServiceComponentHost(cluster1, serviceName, componentName1, host1, null);
+    createServiceComponentHost(cluster1, serviceName, componentName2, host1, null);
+    createServiceComponentHost(cluster1, serviceName, componentName3, host1, null);
+
+    // Install
+    installService(cluster1, serviceName, false, false);
+
+    // Treat host components on host1 as up and healthy
+    Map<String, ServiceComponentHost> hostComponents = cluster.getService(serviceName).getServiceComponent(componentName1).getServiceComponentHosts();
+    for (Map.Entry<String, ServiceComponentHost> entry : hostComponents.entrySet()) {
+      ServiceComponentHost cHost = entry.getValue();
+      cHost.handleEvent(new ServiceComponentHostInstallEvent(cHost.getServiceComponentName(), cHost.getHostName(), System.currentTimeMillis(), cluster.getDesiredStackVersion().getStackId()));
+      cHost.handleEvent(new ServiceComponentHostOpSucceededEvent(cHost.getServiceComponentName(), cHost.getHostName(), System.currentTimeMillis()));
+    }
+    hostComponents = cluster.getService(serviceName).getServiceComponent(componentName2).getServiceComponentHosts();
+    for (Map.Entry<String, ServiceComponentHost> entry : hostComponents.entrySet()) {
+      ServiceComponentHost cHost = entry.getValue();
+      cHost.handleEvent(new ServiceComponentHostInstallEvent(cHost.getServiceComponentName(), cHost.getHostName(), System.currentTimeMillis(), cluster.getDesiredStackVersion().getStackId()));
+      cHost.handleEvent(new ServiceComponentHostOpSucceededEvent(cHost.getServiceComponentName(), cHost.getHostName(), System.currentTimeMillis()));
+    }
+
+    // Case 1: Attempt delete when components still exist
+    Set<HostRequest> requests = new HashSet<HostRequest>();
+    requests.clear();
+    requests.add(new HostRequest(host1, cluster1, null));
+    try {
+      HostResourceProviderTest.deleteHosts(controller, requests, false, false);
+      fail("Expect failure deleting hosts when components exist and have not been deleted.");
+    } catch (Exception e) {
+      LOG.info("Exception is - " + e.getMessage());
+      Assert.assertTrue(e.getMessage().contains("these components must be stopped if running, and then deleted"));
+    }
+
+    Service s = cluster.getService(serviceName);
+    s.getServiceComponent("DATANODE").getServiceComponentHost(host1).setState(State.STARTED);
+    try {
+      HostResourceProviderTest.deleteHosts(controller, requests, false, true);
+      fail("Expect failure deleting hosts when components exist and have not been stopped.");
+    } catch (Exception e) {
+      LOG.info("Exception is - " + e.getMessage());
+      Assert.assertTrue(e.getMessage().contains("these components must be stopped:"));
+    }
+
+    DeleteStatusMetaData data = null;
+    try {
+      data = HostResourceProviderTest.deleteHosts(controller, requests, true, true);
+      Assert.assertTrue(data.getDeletedKeys().size() == 0);
+    } catch (Exception e) {
+      LOG.info("Exception is - " + e.getMessage());
+      fail("Do not expect failure deleting hosts when components exist and are stopped.");
+    }
+
+    LOG.info("Test dry run of delete with all host components");
+    s.getServiceComponent("DATANODE").getServiceComponentHost(host1).setState(State.INSTALLED);
+    try {
+      data = HostResourceProviderTest.deleteHosts(controller, requests, true, true);
+      Assert.assertTrue(data.getDeletedKeys().size() == 1);
+    } catch (Exception e) {
+      LOG.info("Exception is - " + e.getMessage());
+      fail("Do not expect failure deleting hosts when components exist and are stopped.");
+    }
+
+    LOG.info("Test successful delete with all host components");
+    s.getServiceComponent("DATANODE").getServiceComponentHost(host1).setState(State.INSTALLED);
+    try {
+      data = HostResourceProviderTest.deleteHosts(controller, requests, false, true);
+      Assert.assertNotNull(data);
+      Assert.assertTrue(4 == data.getDeletedKeys().size());
+      Assert.assertTrue(0 == data.getExceptionForKeys().size());
+    } catch (Exception e) {
+      LOG.info("Exception is - " + e.getMessage());
+      fail("Do not expect failure deleting hosts when components exist and are stopped.");
+    }
+    // Verify host does not exist
+    try {
+      clusters.getHost(host1);
+      Assert.fail("Expected a HostNotFoundException.");
+    } catch (HostNotFoundException e) {
+      // expected
+    }
   }
 
   @Test
@@ -9178,24 +9285,14 @@ public class AmbariManagementControllerTest {
 
     Set<ServiceComponentHostRequest> schRequests = new HashSet<ServiceComponentHostRequest>();
     schRequests.add(new ServiceComponentHostRequest(cluster1, null, null, host1, null));
-    try {
-      controller.deleteHostComponents(schRequests);
-      fail("Expected exception while deleting all host components.");
-    } catch (AmbariException e) {
-    }
-    Assert.assertEquals(3, cluster.getServiceComponentHosts(host1).size());
+
+    DeleteStatusMetaData deleteStatusMetaData = controller.deleteHostComponents(schRequests);
+    Assert.assertEquals(1, deleteStatusMetaData.getExceptionForKeys().size());
+    Assert.assertEquals(1, cluster.getServiceComponentHosts(host1).size());
 
     sch.handleEvent(new ServiceComponentHostStopEvent(sch.getServiceComponentName(), sch.getHostName(), System.currentTimeMillis()));
     sch.handleEvent(new ServiceComponentHostStoppedEvent (sch.getServiceComponentName(), sch.getHostName(), System.currentTimeMillis()));
 
-    schRequests.clear();
-    // disable HC, DN was already stopped
-    schRequests.add(new ServiceComponentHostRequest(cluster1, serviceName, componentName1, host1, "DISABLED"));
-    updateHostComponents(schRequests, new HashMap<String,String>(), false);
-
-    // delete HC
-    schRequests.clear();
-    schRequests.add(new ServiceComponentHostRequest(cluster1, null, null, host1, null));
     controller.deleteHostComponents(schRequests);
 
     Assert.assertEquals(0, cluster.getServiceComponentHosts(host1).size());
@@ -9292,25 +9389,6 @@ public class AmbariManagementControllerTest {
 
   @Test
   public void testDeleteClusterCreateHost() throws Exception {
-
-    Injector injector = Guice.createInjector(new AuditLoggerModule(), new AbstractModule() {
-      @Override
-      protected void configure() {
-        Properties properties = new Properties();
-        properties.setProperty(Configuration.SERVER_PERSISTENCE_TYPE.getKey(), "in-memory");
-
-        properties.setProperty(Configuration.METADATA_DIR_PATH.getKey(),"src/test/resources/stacks");
-        properties.setProperty(Configuration.SERVER_VERSION_FILE.getKey(),"../version");
-        properties.setProperty(Configuration.OS_VERSION.getKey(), "centos6");
-        properties.setProperty(Configuration.SHARED_RESOURCES_DIR.getKey(), "src/test/resources/");
-        try {
-          install(new ControllerModule(properties));
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      }
-    });
-    injector.getInstance(GuiceJpaInitializer.class);
 
     String STACK_ID = "HDP-2.0.1";
 

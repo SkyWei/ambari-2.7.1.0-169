@@ -772,10 +772,19 @@ From source with checksum 150f554beae04f76f814f59549dead8b"""
      call_mocks = call_side_effects
     )
 
-    self.assertResourceCalled('Execute', ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', '2.2.1.0-2065'), sudo=True,)
+    # ensure deregister is called
     self.assertResourceCalledIgnoreEarlier('Execute', 'hive --config /etc/hive/conf.server --service hiveserver2 --deregister 1.2.1.2.3.0.0-2434',
       path=['/bin:/usr/hdp/current/hive-server2/bin:/usr/hdp/current/hadoop-client/bin'],
       tries=1, user='hive')
+
+    # ensure stop is called
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill 123",
+        not_if = "! (ls /var/run/hive/hive-server.pid >/dev/null 2>&1 && ps -p 123 >/dev/null 2>&1)")
+
+    # skip any other stop stuff since it's covered by other tests and verify hdp-select
+    self.assertResourceCalledIgnoreEarlier('Execute',
+      ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', '2.2.1.0-2065'),
+      sudo=True)
 
 
   @patch("resource_management.libraries.functions.copy_tarball.copy_to_hdfs")
@@ -795,10 +804,16 @@ From source with checksum 150f554beae04f76f814f59549dead8b"""
      call_mocks = call_side_effects
     )
 
-    self.assertResourceCalled('Execute', ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', '2.2.1.0-2065'), sudo=True,)
+    # ensure that deregister is called
     self.assertResourceCalledIgnoreEarlier( 'Execute', 'hive --config /etc/hive/conf.server --service hiveserver2 --deregister 1.2.1.2.3.0.0-2434',
       path=['/bin:/usr/hdp/current/hive-server2/bin:/usr/hdp/current/hadoop-client/bin'],
       tries=1, user='hive')
+
+    # ensure hdp-select is called
+    self.assertResourceCalledIgnoreEarlier('Execute',
+      ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', '2.2.1.0-2065'),
+      sudo = True, )
+
 
   def test_stop_during_upgrade_bad_hive_version(self):
     try:
@@ -811,7 +826,13 @@ From source with checksum 150f554beae04f76f814f59549dead8b"""
     except:
       pass
 
-    self.assertResourceCalled('Execute', ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', '2.2.1.0-2065'), sudo=True,)
+    self.assertResourceCalled('Execute', "ambari-sudo.sh kill 123",
+        not_if = "! (ls /var/run/hive/hive-server.pid >/dev/null 2>&1 && ps -p 123 >/dev/null 2>&1)")
+
+    self.assertResourceCalledIgnoreEarlier('Execute',
+      ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', '2.2.1.0-2065'),
+      sudo=True)
+
     self.assertNoMoreResources()
 
   @patch("resource_management.libraries.functions.security_commons.build_expectations")
@@ -945,8 +966,8 @@ From source with checksum 150f554beae04f76f814f59549dead8b"""
     self.assertResourceCalled('Execute',
                               ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', version), sudo=True,)
 
-    copy_to_hdfs_mock.assert_any_call("mapreduce", "hadoop", "hdfs", host_sys_prepped=False)
-    copy_to_hdfs_mock.assert_any_call("tez", "hadoop", "hdfs", host_sys_prepped=False)
+    copy_to_hdfs_mock.assert_any_call("mapreduce", "hadoop", "hdfs", skip=False)
+    copy_to_hdfs_mock.assert_any_call("tez", "hadoop", "hdfs", skip=False)
     self.assertEquals(2, copy_to_hdfs_mock.call_count)
     self.assertResourceCalled('HdfsResource', None,
         immutable_paths = self.DEFAULT_IMMUTABLE_PATHS,
@@ -988,8 +1009,8 @@ From source with checksum 150f554beae04f76f814f59549dead8b"""
     self.assertResourceCalled('Execute',
 
                               ('ambari-python-wrap', '/usr/bin/hdp-select', 'set', 'hive-server2', version), sudo=True,)
-    copy_to_hdfs_mock.assert_any_call("mapreduce", "hadoop", "hdfs", host_sys_prepped=False)
-    copy_to_hdfs_mock.assert_any_call("tez", "hadoop", "hdfs", host_sys_prepped=False)
+    copy_to_hdfs_mock.assert_any_call("mapreduce", "hadoop", "hdfs", skip=False)
+    copy_to_hdfs_mock.assert_any_call("tez", "hadoop", "hdfs", skip=False)
     self.assertEquals(2, copy_to_hdfs_mock.call_count)
     self.assertResourceCalled('HdfsResource', None,
         immutable_paths = self.DEFAULT_IMMUTABLE_PATHS,

@@ -726,6 +726,17 @@ App.InstallerController = App.WizardController.extend({
         });
         existedOS.push(supportedOS);
       }
+      if(existedMap[supportedOS.OperatingSystems.os_type]) {
+        existedMap[supportedOS.OperatingSystems.os_type].repositories.forEach(function (repo) {
+          supportedOS.repositories.forEach(function (supportedRepo) {
+            if (supportedRepo.Repositories.repo_id == repo.Repositories.repo_id) {
+              repo.Repositories.base_url = supportedRepo.Repositories.base_url;
+              repo.Repositories.default_base_url = supportedRepo.Repositories.default_base_url;
+              repo.Repositories.latest_base_url = supportedRepo.Repositories.latest_base_url;
+            }
+          });
+        });
+      }
     });
     App.stackMapper.map(data.versionDefinition);
 
@@ -831,6 +842,9 @@ App.InstallerController = App.WizardController.extend({
         return os.get('repositories.length');
       }).reduce(Em.sum, 0));
       var verifyBaseUrl = !wizardStep1Controller.get('skipValidationChecked') && !wizardStep1Controller.get('selectedStack.useRedhatSatellite');
+      if (!verifyBaseUrl) {
+        dfd.resolve();
+      }
       selectedStack.get('operatingSystems').forEach(function (os) {
         if (os.get('isSelected') && !os.get('isEmpty')) {
           os.get('repositories').forEach(function (repo) {

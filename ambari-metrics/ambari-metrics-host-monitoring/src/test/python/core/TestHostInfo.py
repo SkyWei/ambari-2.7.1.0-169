@@ -23,6 +23,7 @@ from host_info import HostInfo
 import platform
 from unittest import TestCase
 from mock.mock import patch, MagicMock
+from core.config_reader import Configuration
 import collections
 
 logger = logging.getLogger()
@@ -181,28 +182,28 @@ class TestHostInfo(TestCase):
 
     disk_counter_per_disk = hostinfo.get_disk_io_counters_per_disk()
 
-    # Assert for sda1
-    self.assertEqual(disk_counter_per_disk['disk_1_read_count'], 0)
-    self.assertEqual(disk_counter_per_disk['disk_1_write_count'], 1)
-    self.assertEqual(disk_counter_per_disk['disk_1_read_bytes'], 2)
-    self.assertEqual(disk_counter_per_disk['disk_1_write_bytes'], 3)
-    self.assertEqual(disk_counter_per_disk['disk_1_read_time'], 4)
-    self.assertEqual(disk_counter_per_disk['disk_1_write_time'], 5)
-    self.assertEqual(disk_counter_per_disk['disk_1_busy_time'], 6)
-    self.assertEqual(disk_counter_per_disk['disk_1_read_merged_count'], 7)
-    self.assertEqual(disk_counter_per_disk['disk_1_write_merged_count'], 8)
+    # Assert for sdisk_sda1
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_read_count'], 0)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_write_count'], 1)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_read_bytes'], 2)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_write_bytes'], 3)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_read_time'], 4)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_write_time'], 5)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_busy_time'], 6)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_read_merged_count'], 7)
+    self.assertEqual(disk_counter_per_disk['sdisk_sda1_write_merged_count'], 8)
 
     # Assert for sdb1
 
-    self.assertEqual(disk_counter_per_disk['disk_2_read_count'], 9)
-    self.assertEqual(disk_counter_per_disk['disk_2_write_count'], 10)
-    self.assertEqual(disk_counter_per_disk['disk_2_read_bytes'], 11)
-    self.assertEqual(disk_counter_per_disk['disk_2_write_bytes'], 12)
-    self.assertEqual(disk_counter_per_disk['disk_2_read_time'], 13)
-    self.assertEqual(disk_counter_per_disk['disk_2_write_time'], 14)
-    self.assertEqual(disk_counter_per_disk['disk_2_busy_time'], 15)
-    self.assertEqual(disk_counter_per_disk['disk_2_read_merged_count'], 16)
-    self.assertEqual(disk_counter_per_disk['disk_2_write_merged_count'], 17)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_read_count'], 9)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_write_count'], 10)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_read_bytes'], 11)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_write_bytes'], 12)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_read_time'], 13)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_write_time'], 14)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_busy_time'], 15)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_read_merged_count'], 16)
+    self.assertEqual(disk_counter_per_disk['sdisk_sdb1_write_merged_count'], 17)
 
 
 

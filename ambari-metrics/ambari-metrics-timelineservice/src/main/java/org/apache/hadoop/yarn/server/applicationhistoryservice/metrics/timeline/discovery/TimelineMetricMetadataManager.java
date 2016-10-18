@@ -18,6 +18,7 @@
 package org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.discovery;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -202,7 +203,7 @@ public class TimelineMetricMetadataManager {
       timelineMetric.getUnits(),
       timelineMetric.getType(),
       timelineMetric.getStartTime(),
-      true
+      supportAggregates(timelineMetric)
     );
   }
 
@@ -228,5 +229,10 @@ public class TimelineMetricMetadataManager {
    */
   Map<String, Set<String>> getHostedAppsFromStore() throws SQLException {
     return hBaseAccessor.getHostedAppsMetadata();
+  }
+
+  private boolean supportAggregates(TimelineMetric metric) {
+    return MapUtils.isEmpty(metric.getMetadata()) ||
+      !(String.valueOf(true).equals(metric.getMetadata().get("skipAggregation")));
   }
 }

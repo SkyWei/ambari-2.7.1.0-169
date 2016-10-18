@@ -241,8 +241,8 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
    * @type {String}
    */
   realRepoUrl: function () {
-    return App.get('apiPrefix') + App.get('stackVersionURL') +
-      '/compatible_repository_versions?fields=*,operating_systems/*,operating_systems/repositories/*';
+    return App.get('apiPrefix') + '/stacks?fields=versions/repository_versions/RepositoryVersions,' +
+      'versions/repository_versions/operating_systems/*,versions/repository_versions/operating_systems/repositories/*';
   }.property('App.stackVersionURL'),
 
   /**
@@ -329,14 +329,16 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
     this.loadUpgradeData(true).done(function() {
       self.loadStackVersionsToModel(true).done(function () {
         self.loadRepoVersionsToModel().done(function() {
-          var currentVersion = App.StackVersion.find().findProperty('state', 'CURRENT');
-          if (currentVersion) {
-            self.set('currentVersion', {
-              repository_version: currentVersion.get('repositoryVersion.repositoryVersion'),
-              repository_name: currentVersion.get('repositoryVersion.displayName')
-            });
-          }
-          dfd.resolve();
+          self.loadCompatibleVersions().done(function() {
+            var currentVersion = App.StackVersion.find().findProperty('state', 'CURRENT');
+            if (currentVersion) {
+              self.set('currentVersion', {
+                repository_version: currentVersion.get('repositoryVersion.repositoryVersion'),
+                repository_name: currentVersion.get('repositoryVersion.displayName')
+              });
+            }
+            dfd.resolve();
+          });
         });
       });
     });
@@ -393,6 +395,29 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
     if (data.Upgrade.request_status === 'COMPLETED') {
       this.finish();
     }
+  },
+
+  loadCompatibleVersions: function() {
+    return App.ajax.send({
+      name: 'admin.upgrade.get_compatible_versions',
+      sender: this,
+      data: {
+        stackName: App.get('currentStackName'),
+        stackVersion: App.get('currentStackVersionNumber')
+      },
+      success: 'loadCompatibleVersionsSuccessCallback'
+    });
+  },
+
+  /**
+   *
+   * @param {object} data
+   */
+  loadCompatibleVersionsSuccessCallback: function(data) {
+    App.RepositoryVersion.find().forEach(function(repo) {
+      var version = repo.get('repositoryVersion');
+      repo.set('isCompatible', data.items.someProperty('CompatibleRepositoryVersions.repository_version', version));
+    });
   },
 
   /**
@@ -1459,35 +1484,45 @@ App.MainAdminStackAndUpgradeController = Em.Controller.extend(App.LocalStorage, 
         if (os.get('isSelected')) {
           os.get('repositories').forEach(function (repo) {
             totalCalls++;
-            App.ajax.send({
-              name: 'admin.stack_versions.validate.repo',
-              sender: this,
-              data: {
-                repo: repo,
-                repoId: repo.get('repoId'),
-                baseUrl: repo.get('baseUrl'),
-                osType: os.get('osType'),
-                stackName: App.get('currentStackName'),
-                stackVersion: stackVersionNumber
-              }
+            this.validationCall(repo, os, stackVersionNumber)
+            .success(function () {
+              totalCalls--;
+              if (totalCalls === 0) deferred.resolve(invalidUrls);
             })
-              .success(function () {
-                totalCalls--;
-                if (totalCalls === 0) deferred.resolve(invalidUrls);
-              })
-              .error(function () {
-                repo.set('hasError', true);
-                invalidUrls.push(repo);
-                totalCalls--;
-                if (totalCalls === 0) deferred.resolve(invalidUrls);
-              });
-          });
+            .error(function () {
+              repo.set('hasError', true);
+              invalidUrls.push(repo);
+              totalCalls--;
+              if (totalCalls === 0) deferred.resolve(invalidUrls);
+            });
+          }, this);
         } else {
           return deferred.resolve(invalidUrls);
         }
-      });
+      }, this);
     }
     return deferred.promise();
+  },
+
+  /**
+   *
+   * @param {Em.Object} repo
+   * @param {Em.Object} os
+   * @param {string} stackVersionNumber
+   */
+  validationCall: function(repo, os, stackVersionNumber) {
+    return App.ajax.send({
+      name: 'admin.stack_versions.validate.repo',
+      sender: this,
+      data: {
+        repo: repo,
+        repoId: repo.get('repoId'),
+        baseUrl: repo.get('baseUrl'),
+        osType: os.get('osType'),
+        stackName: App.get('currentStackName'),
+        stackVersion: stackVersionNumber
+      }
+    })
   },
 
   /**

@@ -61,8 +61,8 @@ def setup_hadoop():
     else:
       tc_owner = params.hdfs_user
       
-    # if WebHDFS is not enabled we need this jar to create hadoop folders.
-    if params.host_sys_prepped:
+    # if WebHDFS is not enabled we need this jar to create hadoop folders and copy tarballs to HDFS.
+    if params.sysprep_skip_copy_fast_jar_hdfs:
       print "Skipping copying of fast-hdfs-resource.jar as host is sys prepped"
     elif params.dfs_type == 'HCFS' or not WebHDFSUtil.is_webhdfs_available(params.is_webhdfs_enabled, params.default_fs):
       # for source-code of jar goto contrib/fast-hdfs-resource
@@ -177,7 +177,7 @@ def create_dirs():
 
 def create_microsoft_r_dir():
   import params
-  if 'MICROSOFT_R_CLIENT' in params.component_list and params.default_fs:
+  if 'MICROSOFT_R_NODE_CLIENT' in params.component_list and params.default_fs:
     directory = '/user/RevoShare'
     try:
       params.HdfsResource(directory,

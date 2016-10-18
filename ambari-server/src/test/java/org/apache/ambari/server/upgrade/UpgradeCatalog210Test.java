@@ -33,7 +33,6 @@ import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.easymock.EasyMock.replay;
-import static org.easymock.EasyMock.reset;
 import static org.easymock.EasyMock.verify;
 
 import java.io.File;
@@ -88,10 +87,7 @@ import org.apache.ambari.server.state.stack.OsFamily;
 import org.easymock.Capture;
 import org.easymock.CaptureType;
 import org.easymock.EasyMockSupport;
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.google.inject.AbstractModule;
@@ -100,19 +96,22 @@ import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Module;
 import com.google.inject.Provider;
+import com.google.inject.persist.PersistService;
 
 /**
  * {@link org.apache.ambari.server.upgrade.UpgradeCatalog210} unit tests.
  */
 public class UpgradeCatalog210Test {
-  private static Injector injector;
+  private Injector injector;
   private Provider<EntityManager> entityManagerProvider = createStrictMock(Provider.class);
   private EntityManager entityManager = createNiceMock(EntityManager.class);
-  private static UpgradeCatalogHelper upgradeCatalogHelper;
-  private static StackEntity desiredStackEntity;
+  private UpgradeCatalogHelper upgradeCatalogHelper;
+  private StackEntity desiredStackEntity;
 
-  @BeforeClass
-  public static void classSetUp() {
+  public void initData() {
+    //reset(entityManagerProvider);
+    //expect(entityManagerProvider.get()).andReturn(entityManager).anyTimes();
+    //replay(entityManagerProvider);
     injector = Guice.createInjector(new InMemoryDefaultTestModule());
     injector.getInstance(GuiceJpaInitializer.class);
 
@@ -124,18 +123,8 @@ public class UpgradeCatalog210Test {
     desiredStackEntity = stackDAO.find("HDP", "2.2.0");
   }
 
-  @Before
-  public void init() {
-    reset(entityManagerProvider);
-    expect(entityManagerProvider.get()).andReturn(entityManager).anyTimes();
-    replay(entityManagerProvider);
-
-
-  }
-
-  @After
   public void tearDown() {
-
+    injector.getInstance(PersistService.class).stop();
   }
 
   @Test
@@ -810,6 +799,7 @@ public class UpgradeCatalog210Test {
 
   @Test
   public void testDeleteStormRestApiServiceComponent() throws Exception {
+    initData();
     ClusterEntity clusterEntity = upgradeCatalogHelper.createCluster(injector,
       "c1", desiredStackEntity);
     ClusterServiceEntity clusterServiceEntity = upgradeCatalogHelper.createService(
@@ -868,6 +858,7 @@ public class UpgradeCatalog210Test {
 
     Assert.assertNull(componentDesiredStateDAO.findByName(clusterEntity.getClusterId(), "STORM",
         "STORM_REST_API"));
+    tearDown();
   }
 
 

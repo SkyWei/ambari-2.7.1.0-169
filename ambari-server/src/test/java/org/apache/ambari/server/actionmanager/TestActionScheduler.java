@@ -127,29 +127,31 @@ public class TestActionScheduler {
       + " c6402.ambari.apache.org], slave_hosts=[c6401.ambari.apache.org,"
       + " c6402.ambari.apache.org]}";
 
-  private static Injector injector;
+  private final Injector injector;
 
   private final String hostname = "ahost.ambari.apache.org";
   private final int MAX_CYCLE_ITERATIONS = 100;
 
   @Inject
-  HostRoleCommandFactory hostRoleCommandFactory;
+  private HostRoleCommandFactory hostRoleCommandFactory;
 
   @Inject
-  StageFactory stageFactory;
+  private StageFactory stageFactory;
 
   @Inject
-  StageUtils stageUtils;
+  private HostDAO hostDAO;
 
-  @Inject
-  HostDAO hostDAO;
+  private Provider<EntityManager> entityManagerProviderMock = EasyMock.niceMock(Provider.class);
 
-  Provider<EntityManager> entityManagerProviderMock = EasyMock.niceMock(Provider.class);
+
+  public  TestActionScheduler(){
+    injector = Guice.createInjector(new InMemoryDefaultTestModule());
+  }
 
   @Before
   public void setup() throws Exception {
-    injector = Guice.createInjector(new InMemoryDefaultTestModule());
     injector.getInstance(GuiceJpaInitializer.class);
+    injector.getInstance(StageUtils.class);
     injector.injectMembers(this);
 
     expect(entityManagerProviderMock.get()).andReturn(null);
@@ -159,7 +161,6 @@ public class TestActionScheduler {
   @After
   public void teardown() {
     injector.getInstance(PersistService.class).stop();
-    injector = null;
   }
 
   /**
@@ -2203,10 +2204,9 @@ public class TestActionScheduler {
     hosts.put(hostname, sch);
     when(scomp.getServiceComponentHosts()).thenReturn(hosts);
 
-    long requestId = 1;
-
-    // create 3 stages, each with a single task - the first stage will be completed and should not
+    // Create a single request with 3 stages, each with a single task - the first stage will be completed and should not
     // be included when cancelling the unfinished tasks of the request
+    long requestId = 1;
     final List<Stage> allStages = new ArrayList<Stage>();
     final List<Stage> stagesInProgress = new ArrayList<Stage>();
     final List<HostRoleCommand> tasksInProgress = new ArrayList<>();
@@ -2218,7 +2218,7 @@ public class TestActionScheduler {
 
     Stage stageWithTask = getStageWithSingleTask(
         hostname, "cluster1", Role.SECONDARY_NAMENODE, RoleCommand.START,
-        Service.Type.HDFS, secondaryNamenodeCmdTaskId, 1, (int)requestId);
+        Service.Type.HDFS, secondaryNamenodeCmdTaskId, 1, (int) requestId);
 
     // complete the first stage
     stageWithTask.getOrderedHostRoleCommands().get(0).setStatus(HostRoleStatus.COMPLETED);
@@ -2226,7 +2226,7 @@ public class TestActionScheduler {
 
     stageWithTask = getStageWithSingleTask(
         hostname, "cluster1", Role.NAMENODE, RoleCommand.START,
-        Service.Type.HDFS, namenodeCmdTaskId, 2, (int)requestId);
+        Service.Type.HDFS, namenodeCmdTaskId, 2, (int) requestId);
 
     tasksInProgress.addAll(stageWithTask.getOrderedHostRoleCommands());
     stagesInProgress.add(stageWithTask);
@@ -2234,7 +2234,7 @@ public class TestActionScheduler {
 
     stageWithTask = getStageWithSingleTask(
         hostname, "cluster1", Role.DATANODE, RoleCommand.START,
-        Service.Type.HDFS, datanodeCmdTaskId, 3, (int)requestId);
+        Service.Type.HDFS, datanodeCmdTaskId, 3, (int) requestId);
 
     tasksInProgress.addAll(stageWithTask.getOrderedHostRoleCommands());
     stagesInProgress.add(stageWithTask);
@@ -2270,6 +2270,7 @@ public class TestActionScheduler {
 
     when(db.getCommandsInProgressCount()).thenReturn(stagesInProgress.size());
     when(db.getStagesInProgress()).thenReturn(stagesInProgress);
+    when(db.getStagesInProgressForRequest(requestId)).thenReturn(stagesInProgress);
     when(db.getAllStages(anyLong())).thenReturn(allStages);
 
     List<HostRoleCommand> requestTasks = new ArrayList<HostRoleCommand>();

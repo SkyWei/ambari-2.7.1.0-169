@@ -58,7 +58,6 @@ import org.apache.ambari.server.state.svccomphost.ServiceComponentHostOpSucceede
 import org.apache.ambari.server.state.svccomphost.ServiceComponentHostStartedEvent;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.Logger;
@@ -66,6 +65,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
+import com.google.inject.persist.PersistService;
 
 public class TestHeartbeatMonitor {
 
@@ -73,6 +73,7 @@ public class TestHeartbeatMonitor {
 
   private String hostname1 = "host1";
   private String hostname2 = "host2";
+  private String hostname3 = "host3";
   private String clusterName = "cluster1";
   private String serviceName = "HDFS";
   private int heartbeatMonitorWakeupIntervalMS = 30;
@@ -82,36 +83,17 @@ public class TestHeartbeatMonitor {
   private static final Logger LOG =
           LoggerFactory.getLogger(TestHeartbeatMonitor.class);
 
-  @BeforeClass
-  public static void classSetUp() {
+  @Before
+  public void setup() throws Exception {
     injector = Guice.createInjector(new InMemoryDefaultTestModule());
     injector.getInstance(GuiceJpaInitializer.class);
     helper = injector.getInstance(OrmTestHelper.class);
     ambariMetaInfo = injector.getInstance(AmbariMetaInfo.class);
   }
 
-  @Before
-  public void setup() throws Exception {
-    cleanup();
-  }
-
   @After
   public void teardown() {
-
-  }
-
-  private void cleanup() throws AmbariException {
-    Clusters clusters = injector.getInstance(Clusters.class);
-    Map<String, Cluster> clusterMap = clusters.getClusters();
-
-
-    for (String clusterName : clusterMap.keySet()) {
-      clusters.deleteCluster(clusterName);
-    }
-
-    for (Host host : clusters.getHosts()) {
-      clusters.deleteHost(host.getHostName());
-    }
+    injector.getInstance(PersistService.class).stop();
   }
 
   private void setOsFamily(Host host, String osFamily, String osVersion) {
@@ -154,7 +136,7 @@ public class TestHeartbeatMonitor {
       Thread.sleep(1);
     }
     assertEquals(fsm.getHost(hostname).getState(), HostState.HEARTBEAT_LOST);
-    classSetUp();
+    hm.shutdown();
   }
 
   @Test
@@ -468,7 +450,7 @@ public class TestHeartbeatMonitor {
 
     helper.getOrCreateRepositoryVersion(stackId, stackId.getStackVersion());
     cluster.createClusterVersion(stackId, stackId.getStackVersion(), "admin",
-        RepositoryVersionState.INSTALLING);
+            RepositoryVersionState.INSTALLING);
 
     Set<String> hostNames = new HashSet<String>(){{
       add(hostname1);

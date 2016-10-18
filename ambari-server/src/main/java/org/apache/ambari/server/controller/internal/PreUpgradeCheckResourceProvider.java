@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.ambari.server.AmbariException;
+import org.apache.ambari.server.ParentObjectNotFoundException;
 import org.apache.ambari.server.StaticallyInject;
 import org.apache.ambari.server.checks.AbstractCheckDescriptor;
 import org.apache.ambari.server.checks.UpgradeCheckRegistry;
@@ -44,21 +45,26 @@ import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
 import org.apache.ambari.server.state.CheckHelper;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
+import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.state.UpgradeHelper;
 import org.apache.ambari.server.state.stack.PrerequisiteCheck;
+import org.apache.ambari.server.state.stack.UpgradePack;
+import org.apache.ambari.server.state.stack.upgrade.Direction;
+import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
-import org.apache.ambari.server.state.stack.UpgradePack;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
-import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
 
 /**
  * Resource provider for pre-upgrade checks.
  */
 @StaticallyInject
 public class PreUpgradeCheckResourceProvider extends ReadOnlyResourceProvider {
+  private static Logger LOG = LoggerFactory.getLogger(PreUpgradeCheckResourceProvider.class);
 
   //----- Property ID constants ---------------------------------------------
 
@@ -89,6 +95,9 @@ public class PreUpgradeCheckResourceProvider extends ReadOnlyResourceProvider {
   @Inject
   private static Provider<UpgradeHelper> upgradeHelper;
 
+  @Inject
+  private static CheckHelper checkHelper;
+
   private static Set<String> pkPropertyIds = Collections.singleton(UPGRADE_CHECK_ID_PROPERTY_ID);
 
   public static Set<String> propertyIds = Sets.newHashSet(
@@ -112,9 +121,6 @@ public class PreUpgradeCheckResourceProvider extends ReadOnlyResourceProvider {
       put(Type.Cluster, UPGRADE_CHECK_CLUSTER_NAME_PROPERTY_ID);
     }
   };
-
-  @Inject
-  private static CheckHelper checkHelper;
 
   /**
    * Constructor.
@@ -185,9 +191,21 @@ public class PreUpgradeCheckResourceProvider extends ReadOnlyResourceProvider {
       }
 
       // ToDo: properly handle exceptions, i.e. create fake check with error description
-
       List<AbstractCheckDescriptor> upgradeChecksToRun = upgradeCheckRegistry.getFilteredUpgradeChecks(upgradePack);
       upgradeCheckRequest.setPrerequisiteCheckConfig(upgradePack.getPrerequisiteCheckConfig());
+
+      try {
+        // Register all the custom prechecks from the services
+        Map<String, ServiceInfo> services = getManagementController().getAmbariMetaInfo().getServices(stackName, sourceStackVersion);
+        List<AbstractCheckDescriptor> serviceLevelUpgradeChecksToRun = upgradeCheckRegistry.getServiceLevelUpgradeChecks(upgradePack, services);
+        upgradeChecksToRun.addAll(serviceLevelUpgradeChecksToRun);
+      } catch (ParentObjectNotFoundException parentNotFoundException) {
+        LOG.error("Invalid stack version: " + stackName + "-" + sourceStackVersion, parentNotFoundException);
+      } catch (AmbariException ambariException) {
+        LOG.error("Unable to register all the custom prechecks from the services", ambariException);
+      } catch (Exception e) {
+        LOG.error("Failed to register custom prechecks for the services", e);
+      }
 
       for (PrerequisiteCheck prerequisiteCheck : checkHelper.performChecks(upgradeCheckRequest, upgradeChecksToRun)) {
         final Resource resource = new ResourceImpl(Resource.Type.PreUpgradeCheck);

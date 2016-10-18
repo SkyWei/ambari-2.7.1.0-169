@@ -37,15 +37,16 @@ describe('App.MainAdminStackAndUpgradeController', function() {
   describe("#realRepoUrl", function() {
     before(function () {
       this.mock = sinon.stub(App, 'get');
-      this.mock.withArgs('apiPrefix').returns('apiPrefix')
-        .withArgs('stackVersionURL').returns('stackVersionURL');
+      this.mock.withArgs('apiPrefix').returns('apiPrefix');
     });
     after(function () {
       this.mock.restore();
     });
     it("should be valid", function() {
+      var expected = 'apiPrefix/stacks?fields=versions/repository_versions/RepositoryVersions,' +
+        'versions/repository_versions/operating_systems/*,versions/repository_versions/operating_systems/repositories/*';
       controller.propertyDidChange('realRepoUrl');
-      expect(controller.get('realRepoUrl')).to.equal('apiPrefixstackVersionURL/compatible_repository_versions?fields=*,operating_systems/*,operating_systems/repositories/*');
+      expect(controller.get('realRepoUrl')).to.equal(expected);
     });
   });
 
@@ -121,6 +122,9 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       sinon.stub(controller, 'loadRepoVersionsToModel').returns({
         done: Em.clb
       });
+      sinon.stub(controller, 'loadCompatibleVersions').returns({
+        done: Em.clb
+      });
       sinon.stub(App.StackVersion, 'find').returns([Em.Object.create({
         state: 'CURRENT',
         repositoryVersion: {
@@ -134,6 +138,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       controller.loadUpgradeData.restore();
       controller.loadStackVersionsToModel.restore();
       controller.loadRepoVersionsToModel.restore();
+      controller.loadCompatibleVersions.restore();
       App.StackVersion.find.restore();
     });
     it("loadUpgradeData called with valid arguments", function() {
@@ -144,6 +149,9 @@ describe('App.MainAdminStackAndUpgradeController', function() {
     });
     it('loadRepoVersionsToModel called once', function () {
       expect(controller.loadRepoVersionsToModel.calledOnce).to.be.true;
+    });
+    it('loadCompatibleVersions called once', function () {
+      expect(controller.loadCompatibleVersions.calledOnce).to.be.true;
     });
     it('currentVersion is corrent', function () {
       expect(controller.get('currentVersion')).to.eql({
@@ -1396,24 +1404,45 @@ describe('App.MainAdminStackAndUpgradeController', function() {
 
   describe("#validateRepoVersions()", function () {
 
-    it("skip validation", function () {
-      controller.validateRepoVersions(Em.Object.create({repoVersionId: 1}), true);
-      var args = testHelpers.findAjaxRequest('name', 'admin.stack_versions.validate.repo');
-      expect(args).to.not.exists;
+    beforeEach(function() {
+      sinon.stub(controller, 'validationCall').returns({
+        success: function() {
+          return {error: Em.K}
+        }
+      });
+      sinon.stub(controller, 'getStackVersionNumber').returns('v1')
     });
-    it("do validation", function () {
-      var repo = Em.Object.create({
-        repoVersionId: 1,
-        operatingSystems: [
-          Em.Object.create({
-            isSelected: true,
-            repositories: [
-              Em.Object.create()
-            ]
-          })
+
+    afterEach(function() {
+      controller.validationCall.restore();
+      controller.getStackVersionNumber.restore();
+    });
+
+
+    it("validationCall should not be called", function () {
+      controller.validateRepoVersions(Em.Object.create({repoVersionId: 1}), true);
+      expect(controller.validationCall.called).to.be.false;
+    });
+    it("validationCall should be called", function () {
+      var os = Em.Object.create({
+        isSelected: true,
+        repositories: [
+          Em.Object.create()
         ]
       });
+      var repo = Em.Object.create({
+        repoVersionId: 1,
+        operatingSystems: [ os ]
+      });
       controller.validateRepoVersions(repo, false);
+      expect(controller.validationCall.calledOnce).to.be.true;
+    });
+  });
+
+  describe("#validationCall()", function () {
+
+    it("App.ajax.send should be called", function() {
+      controller.validationCall(Em.Object.create(), Em.Object.create(), 'v1');
       var args = testHelpers.findAjaxRequest('name', 'admin.stack_versions.validate.repo');
       expect(args[0]).to.exists;
     });
@@ -3117,6 +3146,66 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       expect(controller.get('serviceVersionsMap')).to.be.eql({
         "S1": "v1"
       });
+    });
+  });
+
+  describe("#loadCompatibleVersions()", function () {
+
+    beforeEach(function() {
+      sinon.stub(App, 'get').returns('stack');
+    });
+
+    afterEach(function() {
+      App.get.restore();
+    });
+
+    it("App.ajax.send should be called", function() {
+      controller.loadCompatibleVersions();
+      var args = testHelpers.findAjaxRequest('name', 'admin.upgrade.get_compatible_versions');
+      expect(args[0]).to.be.eql({
+        name: 'admin.upgrade.get_compatible_versions',
+        sender: controller,
+        data: {
+          stackName: 'stack',
+          stackVersion: 'stack'
+        },
+        success: 'loadCompatibleVersionsSuccessCallback'
+      });
+    });
+  });
+
+  describe("#loadCompatibleVersionsSuccessCallback()", function () {
+    var mock = [
+      Em.Object.create({
+        repositoryVersion: 'HDP-1',
+        isCompatible: false
+      }),
+      Em.Object.create({
+        repositoryVersion: 'HDP-2',
+        isCompatible: false
+      })
+    ];
+
+    beforeEach(function() {
+      sinon.stub(App.RepositoryVersion, 'find').returns(mock);
+    });
+
+    afterEach(function() {
+      App.RepositoryVersion.find.restore();
+    });
+
+    it("should set isCompatible property", function() {
+      var data = {
+        items: [
+          {
+            CompatibleRepositoryVersions: {
+              repository_version: 'HDP-2'
+            }
+          }
+        ]
+      };
+      controller.loadCompatibleVersionsSuccessCallback(data);
+      expect(mock.mapProperty('isCompatible')).to.be.eql([false, true])
     });
   });
 

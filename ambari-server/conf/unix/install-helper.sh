@@ -46,9 +46,9 @@ AMBARI_LOG4J="${AMBARI_CONFIGS_DIR}/log4j.properties"
 
 clean_pyc_files(){
   # cleaning old *.pyc files
-  find $RESOURCE_MANAGEMENT_DIR/ -name *.pyc -exec rm {} \;
-  find $COMMON_DIR/ -name *.pyc -exec rm {} \;
-  find $AMBARI_SERVER/ -name *.pyc -exec rm {} \;
+  find ${RESOURCE_MANAGEMENT_DIR:?} -name *.pyc -exec rm {} \;
+  find ${COMMON_DIR:?} -name *.pyc -exec rm {} \;
+  find ${AMBARI_SERVER:?} -name *.pyc -exec rm {} \;
 }
 
 
@@ -102,6 +102,7 @@ do_install(){
 
   sed -i "s|ambari.root.dir\s*=\s*/|ambari.root.dir=${ROOT}|g" "$AMBARI_LOG4J"
   sed -i "s|root_dir\s*=\s*/|root_dir = ${ROOT}|g" "$CA_CONFIG"
+  sed -i "s|^ROOT=\"/\"$|ROOT=\"${ROOT}\"|g" "$AMBARI_SERVER_EXECUTABLE"
 
   AUTOSTART_SERVER_CMD="" 
   which chkconfig > /dev/null 2>&1

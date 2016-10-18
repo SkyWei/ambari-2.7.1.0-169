@@ -18,13 +18,13 @@
 
 package org.apache.ambari.server.orm;
 
+import javax.persistence.EntityManager;
+import javax.persistence.RollbackException;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-
-import javax.persistence.EntityManager;
-import javax.persistence.RollbackException;
 
 import org.apache.ambari.server.Role;
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
@@ -55,23 +55,43 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.Guice;
+import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.persist.PersistService;
 
 public class TestOrmImpl extends Assert {
   private static final Logger log = LoggerFactory.getLogger(TestOrmImpl.class);
-
-  private static Injector injector;
+  @Inject
+  private Injector injector;
+  @Inject
+  private StackDAO stackDAO;
+  @Inject
+  private ResourceTypeDAO resourceTypeDAO;
+  @Inject
+  private ClusterDAO clusterDAO;
+  @Inject
+  private OrmTestHelper ormTestHelper;
+  @Inject
+  private ClusterServiceDAO clusterServiceDAO;
+  @Inject
+  private HostRoleCommandDAO hostRoleCommandDAO;
+  @Inject
+  private HostDAO hostDAO;
+  @Inject
+  private StageDAO stageDAO;
+  @Inject
+  private EntityManager entityManager;
+  @Inject
+  private RequestDAO requestDAO;
 
   @Before
   public void setup() {
     injector = Guice.createInjector(new InMemoryDefaultTestModule());
     injector.getInstance(GuiceJpaInitializer.class);
-
+    injector.injectMembers(this);
     // required to load stack information into the DB
     injector.getInstance(AmbariMetaInfo.class);
-
-    injector.getInstance(OrmTestHelper.class).createDefaultData();
+    ormTestHelper.createDefaultData();
   }
 
   @After
@@ -86,8 +106,6 @@ public class TestOrmImpl extends Assert {
   public void testEmptyPersistentCollection() {
     String testClusterName = "test_cluster2";
 
-    StackDAO stackDAO = injector.getInstance(StackDAO.class);
-    ResourceTypeDAO resourceTypeDAO = injector.getInstance(ResourceTypeDAO.class);
 
     // create an admin resource to represent this cluster
     ResourceTypeEntity resourceTypeEntity = resourceTypeDAO.findById(ResourceType.CLUSTER.getId());
@@ -107,7 +125,6 @@ public class TestOrmImpl extends Assert {
     clusterEntity.setResource(resourceEntity);
     clusterEntity.setDesiredStack(stackEntity);
 
-    ClusterDAO clusterDAO = injector.getInstance(ClusterDAO.class);
     clusterDAO.create(clusterEntity);
     clusterEntity = clusterDAO.findByName(clusterEntity.getClusterName());
 
@@ -120,7 +137,7 @@ public class TestOrmImpl extends Assert {
    */
   @Test(expected = RollbackException.class)
   public void testRollbackException() throws Throwable{
-    injector.getInstance(OrmTestHelper.class).performTransactionMarkedForRollback();
+    ormTestHelper.performTransactionMarkedForRollback();
   }
 
   /**
@@ -130,14 +147,14 @@ public class TestOrmImpl extends Assert {
   public void testSafeRollback() {
     String testClusterName = "don't save";
 
-    EntityManager entityManager = injector.getInstance(OrmTestHelper.class).getEntityManager();
+    EntityManager entityManager = ormTestHelper.getEntityManager();
     entityManager.getTransaction().begin();
     ClusterEntity clusterEntity = new ClusterEntity();
     clusterEntity.setClusterName(testClusterName);
     entityManager.persist(clusterEntity);
     entityManager.getTransaction().rollback();
 
-    assertNull("transaction was not rolled back", injector.getInstance(ClusterDAO.class).findByName(testClusterName));
+    assertNull("transaction was not rolled back", clusterDAO.findByName(testClusterName));
   }
 
   /**
@@ -145,7 +162,6 @@ public class TestOrmImpl extends Assert {
    */
   @Test
   public void testAutoIncrementedField() {
-    ClusterServiceDAO clusterServiceDAO = injector.getInstance(ClusterServiceDAO.class);
     Date currentTime = new Date();
     String serviceName = "MapReduce1";
     String clusterName = "test_cluster1";
@@ -161,8 +177,6 @@ public class TestOrmImpl extends Assert {
   }
 
   private void createService(Date currentTime, String serviceName, String clusterName) {
-    ClusterServiceDAO clusterServiceDAO = injector.getInstance(ClusterServiceDAO.class);
-    ClusterDAO clusterDAO = injector.getInstance(ClusterDAO.class);
     ClusterEntity cluster = clusterDAO.findByName(clusterName);
 
     ClusterServiceEntity clusterServiceEntity = new ClusterServiceEntity();
@@ -185,7 +199,6 @@ public class TestOrmImpl extends Assert {
    */
   @Test
   public void testCascadeRemoveFail() {
-    ClusterServiceDAO clusterServiceDAO = injector.getInstance(ClusterServiceDAO.class);
     Date currentTime = new Date();
     String serviceName = "MapReduce2";
     String clusterName = "test_cluster1";
@@ -215,13 +228,12 @@ public class TestOrmImpl extends Assert {
     log.info("command '{}' - taskId '{}'", list.get(1).getRoleCommand(),
         list.get(1).getTaskId());
    assertTrue(list.get(0).getTaskId() < list.get(1).getTaskId());
+
   }
 
   @Test
   public void testFindHostsByStage() {
-    injector.getInstance(OrmTestHelper.class).createStageCommands();
-    HostDAO hostDAO = injector.getInstance(HostDAO.class);
-    StageDAO stageDAO = injector.getInstance(StageDAO.class);
+    ormTestHelper.createStageCommands();
     StageEntity stageEntity = stageDAO.findByActionId("1-1");
     log.info("StageEntity {} {}" + stageEntity.getRequestId() + " "
         + stageEntity.getStageId());
@@ -231,8 +243,7 @@ public class TestOrmImpl extends Assert {
 
   @Test
   public void testAbortHostRoleCommands() {
-    injector.getInstance(OrmTestHelper.class).createStageCommands();
-    HostRoleCommandDAO hostRoleCommandDAO = injector.getInstance(HostRoleCommandDAO.class);
+    ormTestHelper.createStageCommands();
     int result = hostRoleCommandDAO.updateStatusByRequestId(
         1L, HostRoleStatus.ABORTED, Arrays.asList(HostRoleStatus.QUEUED,
         HostRoleStatus.IN_PROGRESS, HostRoleStatus.PENDING));
@@ -249,17 +260,14 @@ public class TestOrmImpl extends Assert {
 
   @Test
   public void testFindStageByHostRole() {
-    injector.getInstance(OrmTestHelper.class).createStageCommands();
-    HostRoleCommandDAO hostRoleCommandDAO = injector.getInstance(HostRoleCommandDAO.class);
+    ormTestHelper.createStageCommands();
     List<HostRoleCommandEntity> list = hostRoleCommandDAO.findByHostRole("test_host1", 1L, 1L, Role.DATANODE.toString());
     assertEquals(1, list.size());
   }
 
   @Test
   public void testLastRequestId() {
-    injector.getInstance(OrmTestHelper.class).createStageCommands();
-    ClusterDAO clusterDAO = injector.getInstance(ClusterDAO.class);
-    StageDAO stageDAO = injector.getInstance(StageDAO.class);
+    ormTestHelper.createStageCommands();
     RequestDAO requestDAO = injector.getInstance(RequestDAO.class);
 
     RequestEntity requestEntity = requestDAO.findByPK(1L);
@@ -286,10 +294,6 @@ public class TestOrmImpl extends Assert {
 
   @Test
   public void testConcurrentModification() throws InterruptedException {
-    final StackDAO stackDAO = injector.getInstance(StackDAO.class);
-    final ClusterDAO clusterDAO = injector.getInstance(ClusterDAO.class);
-    final ResourceTypeDAO resourceTypeDAO = injector.getInstance(ResourceTypeDAO.class);
-
     final StackEntity stackEntity = stackDAO.find("HDP", "2.2.0");
 
     // create an admin resource to represent this cluster
@@ -323,14 +327,14 @@ public class TestOrmImpl extends Assert {
         clusterEntity1 = clusterDAO.findById(clusterEntity1.getClusterId());
         assertEquals("anotherName", clusterEntity1.getClusterName());
 
-        injector.getInstance(EntityManager.class).clear();
+        entityManager.clear();
       }
     };
 
     thread.start();
     thread.join();
 
-    injector.getInstance(EntityManager.class).clear();
+    entityManager.clear();
 
     clusterEntity = clusterDAO.findById(clusterEntity.getClusterId());
     assertEquals("anotherName", clusterEntity.getClusterName());
@@ -339,14 +343,14 @@ public class TestOrmImpl extends Assert {
       @Override
       public void run() {
         clusterDAO.removeByName("anotherName");
-        injector.getInstance(EntityManager.class).clear();
+        entityManager.clear();
       }
     };
 
     thread.start();
     thread.join();
 
-    injector.getInstance(EntityManager.class).clear();
+    entityManager.clear();
     assertNull(clusterDAO.findById(clusterEntity.getClusterId()));
 
     List<ClusterEntity> result = clusterDAO.findAll();

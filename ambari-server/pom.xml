@@ -572,7 +572,63 @@
         <configuration>
           <skip>${skipSurefireTests}</skip>
           <argLine>-Xmx1024m -XX:MaxPermSize=512m -Xms512m</argLine>
+
+          <!-- Each profile in the top-level pom.xml defines which test group categories to run. -->
+          <groups>${testcase.groups}</groups>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>1.7</version>
+        <executions>
+          <execution>
+            <id>clean-sample-upgrade-check-jar</id>
+            <phase>process-test-classes</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <delete dir="target/test-classes/checks" includeemptydirs="true"/>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.0.2</version>
+        <executions>
+          <execution>
+            <id>create-sample-upgrade-check-jar</id>
+            <phase>process-test-classes</phase>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>target/test-classes/checks</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>generate-test-oozie2-checks-dir</id>
+            <phase>process-test-classes</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <mkdir dir="target/test-classes/extensions/EXT/0.1/services/OOZIE2/checks/tmp"/>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
@@ -1384,6 +1440,14 @@
       <groupId>org.slf4j</groupId>
       <artifactId>jul-to-slf4j</artifactId>
       <version>1.7.2</version>
+    </dependency>
+
+    <!-- Dependency in order to annotate unit tests with a category. -->
+    <dependency>
+      <groupId>utility</groupId>
+      <artifactId>utility</artifactId>
+      <version>1.0.0.0-SNAPSHOT</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
