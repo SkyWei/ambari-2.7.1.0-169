@@ -1100,6 +1100,12 @@ public class Configuration {
 
 
   /**
+   * Enable the profiling of internal locks.
+   */
+  @Markdown(description = "Enable the profiling of internal locks.")
+  public static final ConfigurationProperty<Boolean> SERVER_LOCKS_PROFILING = new ConfigurationProperty<>("server.locks.profiling", Boolean.FALSE);
+
+  /**
    * The size of the cache used to hold {@link HostRoleCommand} instances in-memory.
    */
   @Markdown(description = "The size of the cache which is used to hold current operations in memory until they complete.")
@@ -4559,6 +4565,13 @@ public class Configuration {
 
   public boolean isAuditLogEnabled() {
     return Boolean.parseBoolean(getProperty(AUDIT_LOG_ENABLED));
+  }
+
+  /**
+   * @return true if lock profiling is enabled for Ambari Server, in which case LockFactory should create instrumented locks
+   */
+  public boolean isServerLocksProfilingEnabled() {
+    return Boolean.parseBoolean(getProperty(SERVER_LOCKS_PROFILING));
   }
 
   /**
