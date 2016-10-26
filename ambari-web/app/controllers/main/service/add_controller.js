@@ -123,13 +123,12 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
           var self = this;
           var dfd = $.Deferred();
           this.loadKerberosDescriptorConfigs().done(function() {
-            self.loadServiceConfigGroups();
             self.loadConfigThemes().then(function() {
-              self.loadServiceConfigProperties().always(function() {
-                self.loadCurrentHostGroups();
-                dfd.resolve();
-              });
+              dfd.resolve();
             });
+            self.loadServiceConfigGroups();
+            self.loadServiceConfigProperties();
+            self.loadCurrentHostGroups();
           });
           return dfd.promise();
         }
@@ -302,19 +301,14 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
   },
 
   loadServiceConfigProperties: function () {
-    var self = this;
-    var dfd = $.Deferred();
-    this._super().always(function() {
-      if (!self.get('content.services')) {
-        self.loadServices();
-      }
-      if (self.get('currentStep') > 1 && self.get('currentStep') < 6) {
-        self.set('content.skipConfigStep', self.skipConfigStep());
-        self.get('isStepDisabled').findProperty('step', 4).set('value', self.get('content.skipConfigStep'));
-      }
-      dfd.resolve();
-    });
-    return dfd.promise();
+    this._super();
+    if (!this.get('content.services')) {
+      this.loadServices();
+    }
+    if (this.get('currentStep') > 1 && this.get('currentStep') < 6) {
+      this.set('content.skipConfigStep', this.skipConfigStep());
+      this.get('isStepDisabled').findProperty('step', 4).set('value', this.get('content.skipConfigStep'));
+    }
   },
 
   /**
@@ -337,16 +331,11 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
   },
 
   saveServiceConfigProperties: function (stepController) {
-    var dfd = $.Deferred();
-    var self = this;
-    this._super(stepController).always(function() {
-      if (self.get('currentStep') > 1 && self.get('currentStep') < 6) {
-        self.set('content.skipConfigStep', self.skipConfigStep());
-        self.get('isStepDisabled').findProperty('step', 4).set('value', self.get('content.skipConfigStep'));
-      }
-      dfd.resolve();
-    });
-    return dfd.promise();
+    this._super(stepController);
+    if (this.get('currentStep') > 1 && this.get('currentStep') < 6) {
+      this.set('content.skipConfigStep', this.skipConfigStep());
+      this.get('isStepDisabled').findProperty('step', 4).set('value', this.get('content.skipConfigStep'));
+    }
   },
 
   /**
@@ -424,7 +413,6 @@ App.AddServiceController = App.WizardController.extend(App.AddSecurityConfigs, {
   finish: function () {
     this.clearAllSteps();
     this.clearStorageData();
-    this.clearServiceConfigProperties();
     this.resetDbNamespace();
     App.router.get('updateController').updateAll();
   },

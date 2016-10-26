@@ -469,13 +469,13 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
     this.clearStep();
 
     var self = this;
+
     App.config.setPreDefinedServiceConfigs(this.get('addMiscTabToPage'));
 
-    var storedConfigs = this.get('content.serviceConfigProperties');
-    var configs = storedConfigs && storedConfigs.length ? storedConfigs : App.configsCollection.getAll();
+    var configs = this.getInitialConfigs(this.get('content.serviceConfigProperties'));
 
     this.set('groupsToDelete', this.get('wizardController').getDBProperty('groupsToDelete') || []);
-    if (this.get('wizardController.name') === 'addServiceController' && !storedConfigs) {
+    if (this.get('wizardController.name') === 'addServiceController' && !this.get('content.serviceConfigProperties.length')) {
       App.router.get('configurationController').getConfigsByTags(this.get('serviceConfigTags')).done(function (loadedConfigs) {
         configs = self.setInstalledServiceConfigs(configs, loadedConfigs, self.get('installedServiceNames'));
         self.applyServicesConfigs(configs);

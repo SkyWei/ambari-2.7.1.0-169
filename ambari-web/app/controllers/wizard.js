@@ -18,11 +18,9 @@
 
 
 var App = require('app');
-var persistUtils = require('utils/persist');
-
 require('models/host');
 
-App.WizardController = Em.Controller.extend(App.LocalStorage, App.ThemesMappingMixin, App.Persist, {
+App.WizardController = Em.Controller.extend(App.LocalStorage, App.ThemesMappingMixin, {
 
   isStepDisabled: null,
 
@@ -903,19 +901,11 @@ App.WizardController = Em.Controller.extend(App.LocalStorage, App.ThemesMappingM
   },
 
   /**
-   * Load serviceConfigProperties from persist
-   * @return {$.Deferred}
+   * Load serviceConfigProperties to model
    */
   loadServiceConfigProperties: function () {
-    var dfd = $.Deferred();
-    var self = this;
-    this.getPersistentProperty('serviceConfigProperties').always(function(data) {
-      if (data && !data.error) {
-        self.set('content.serviceConfigProperties', data);
-      }
-      dfd.resolve();
-    });
-    return dfd.promise();
+    var serviceConfigProperties = this.getDBProperty('serviceConfigProperties');
+    this.set('content.serviceConfigProperties', serviceConfigProperties);
   },
   /**
    * Save config properties
@@ -955,9 +945,11 @@ App.WizardController = Em.Controller.extend(App.LocalStorage, App.ThemesMappingM
         }
       }
     }, this);
+    this.setDBProperties({
+      fileNamesToUpdate: fileNamesToUpdate,
+      serviceConfigProperties: serviceConfigProperties
+    });
     this.set('content.serviceConfigProperties', serviceConfigProperties);
-    this.setDBProperty('fileNamesToUpdate', fileNamesToUpdate);
-    return this.setPersistentProperty('serviceConfigProperties', serviceConfigProperties);
   },
 
   isExcludedConfig: function (configProperty) {
@@ -1375,11 +1367,6 @@ App.WizardController = Em.Controller.extend(App.LocalStorage, App.ThemesMappingM
 
   clearCachedStepConfigValues: function(stepController) {
     this.setDBProperty(stepController.name + "-sc", null);
-  },
-
-  clearServiceConfigProperties: function() {
-    this.get('content.serviceConfigProperties', null);
-    return this.removePersistentProperty('serviceConfigProperties');
   },
 
   saveTasksStatuses: function (tasksStatuses) {

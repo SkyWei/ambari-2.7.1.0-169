@@ -608,7 +608,6 @@ describe('App.InstallerController', function () {
         },
         loadServiceConfigProperties: function() {
           loadServiceConfigProperties = true;
-          return $.Deferred().resolve().promise();
         },
         loadCurrentHostGroups: function() {
           loadCurrentHostGroups = true;
@@ -621,7 +620,6 @@ describe('App.InstallerController', function () {
         },
         loadConfigThemes: function() {
           loadConfigThemes = true;
-          return $.Deferred().resolve().promise();
         }
       };
 
@@ -787,12 +785,12 @@ describe('App.InstallerController', function () {
 
   describe('#loadServiceConfigProperties', function() {
     beforeEach(function () {
-      sinon.stub(installerController, 'getPersistentProperty').returns($.Deferred().resolve({
+      sinon.stub(installerController, 'getDBProperty').returns({
         value: 2
-      }).promise());
+      });
     });
     afterEach(function () {
-      installerController.getPersistentProperty.restore();
+      installerController.getDBProperty.restore();
     });
     it ('Should load service config property', function() {
       installerController.loadServiceConfigProperties();
