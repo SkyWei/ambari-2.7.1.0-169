@@ -383,8 +383,8 @@ public class JdbcConnector extends HiveActor {
       updateJobStatus(jobId.get(), Job.JOB_STATE_ERROR);
     } else {
       sender().tell(new ExecutionFailed("Cannot connect to hive"), ActorRef.noSender());
-      cleanUpWithTermination();
     }
+    cleanUpWithTermination();
   }
 
   private void keepAlive() {
