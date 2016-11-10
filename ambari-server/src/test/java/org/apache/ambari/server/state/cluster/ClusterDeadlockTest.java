@@ -18,6 +18,21 @@
 
 package org.apache.ambari.server.state.cluster;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.ambari.server.AmbariException;
+import org.apache.ambari.server.ServiceComponentNotFoundException;
+import org.apache.ambari.server.ServiceNotFoundException;
+import org.apache.ambari.server.events.listeners.upgrade.HostVersionOutOfSyncListener;
+import org.apache.ambari.server.orm.GuiceJpaInitializer;
+import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
+import org.apache.ambari.server.orm.OrmTestHelper;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -34,22 +49,6 @@ import org.apache.ambari.server.state.ServiceFactory;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.State;
 import org.apache.ambari.server.testing.DeadlockWarningThread;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import org.apache.ambari.server.AmbariException;
-import org.apache.ambari.server.ServiceComponentNotFoundException;
-import org.apache.ambari.server.ServiceNotFoundException;
-import org.apache.ambari.server.events.listeners.upgrade.HostVersionOutOfSyncListener;
-import org.apache.ambari.server.orm.GuiceJpaInitializer;
-import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
-import org.apache.ambari.server.orm.OrmTestHelper;
 import org.easymock.EasyMock;
 import org.junit.After;
 import org.junit.Assert;
@@ -69,8 +68,8 @@ import com.google.inject.util.Modules;
  * writes of some of the impl classes.
  */
 public class ClusterDeadlockTest {
-  private static final int NUMBER_OF_HOSTS = 100;
-  private static final int NUMBER_OF_THREADS = 3;
+  private static final int NUMBER_OF_HOSTS = 40;
+  private static final int NUMBER_OF_THREADS = 5;
 
   private final AtomicInteger hostNameCounter = new AtomicInteger(0);
 
@@ -142,7 +141,6 @@ public class ClusterDeadlockTest {
 
       clusters.addHost(hostName);
       setOsFamily(clusters.getHost(hostName), "redhat", "6.4");
-      clusters.getHost(hostName).persist();
       clusters.mapHostToCluster(hostName, "c1");
     }
 
@@ -254,10 +252,6 @@ public class ClusterDeadlockTest {
           "DATANODE", hostName));
     }
 
-    // !!! needed to populate some maps; without this, the cluster report
-    // won't do anything and this test will be worthless
-    ((ClusterImpl) cluster).loadServiceHostComponents();
-
     List<Thread> threads = new ArrayList<Thread>();
     for (int i = 0; i < NUMBER_OF_THREADS; i++) {
       ClusterReaderThread clusterReaderThread = new ClusterReaderThread();
@@ -274,8 +268,7 @@ public class ClusterDeadlockTest {
       schWriterThread.start();
     }
     
-    DeadlockWarningThread wt = new DeadlockWarningThread(threads);
-    
+    DeadlockWarningThread wt = new DeadlockWarningThread(threads, 20, 1000);
     while (true) {
       if(!wt.isAlive()) {
           break;
@@ -328,7 +321,7 @@ public class ClusterDeadlockTest {
   private final class ClusterDesiredConfigsReaderThread extends Thread {
     @Override
     public void run() {
-      for (int i =0; i<1500; i++) {
+      for (int i =0; i<1000; i++) {
         cluster.getDesiredConfigs();
       }
     }
@@ -343,7 +336,7 @@ public class ClusterDeadlockTest {
 
     @Override
     public void run() {
-      for (int i =0; i<500; i++) {
+      for (int i =0; i<300; i++) {
         config.persist(false);
       }
     }
@@ -361,7 +354,7 @@ public class ClusterDeadlockTest {
     @Override
     public void run() {
       try {
-        for (int i = 0; i < 1500; i++) {
+        for (int i = 0; i < 1000; i++) {
           cluster.convertToResponse();
           Thread.sleep(10);
         }
@@ -589,7 +582,6 @@ public class ClusterDeadlockTest {
     sch.setDesiredStackVersion(stackId);
     sch.setStackVersion(stackId);
 
-    sch.persist();
     return sch;
   }
 
@@ -601,7 +593,6 @@ public class ClusterDeadlockTest {
     } catch (ServiceNotFoundException e) {
       service = serviceFactory.createNew(cluster, serviceName);
       cluster.addService(service);
-      service.persist();
     }
 
     return service;
@@ -617,7 +608,6 @@ public class ClusterDeadlockTest {
           componentName);
       service.addServiceComponent(serviceComponent);
       serviceComponent.setDesiredState(State.INSTALLED);
-      serviceComponent.persist();
     }
 
     return serviceComponent;

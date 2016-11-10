@@ -365,8 +365,22 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       expect(App.router.transitionTo.called).to.be.false;
     });
 
+    it('should not open dialog, isWizardRestricted=true', function () {
+      this.mockAuthorized.returns(true);
+      controller.set('isWizardRestricted', true);
+      controller.openUpgradeDialog();
+      expect(App.router.transitionTo.called).to.be.false;
+    });
+
     it('upgradeSuspended should not receive value', function () {
       this.mockAuthorized.returns(false);
+      controller.openUpgradeDialog();
+      expect(mock.observer.called).to.be.false;
+    });
+
+    it('upgradeSuspended should not receive value, isWizardRestricted=true', function () {
+      this.mockAuthorized.returns(true);
+      controller.set('isWizardRestricted', true);
       controller.openUpgradeDialog();
       expect(mock.observer.called).to.be.false;
     });
@@ -1791,6 +1805,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
         isDowngrade: false,
         upgradeState: 'PENDING',
         upgradeType: "ROLLING",
+        isWizardRestricted: false,
         downgradeAllowed: true,
         upgradeTypeDisplayName: Em.I18n.t('admin.stackVersions.version.upgrade.upgradeOptions.RU.title'),
         failuresTolerance: Em.Object.create({
@@ -3023,6 +3038,22 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       App.clusterStatus.setClusterStatus.restore();
     });
 
+    it("setDBProperties should be called", function() {
+      controller.finish();
+      expect(controller.setDBProperties.calledWith({
+        upgradeId: undefined,
+        upgradeState: 'INIT',
+        upgradeVersion: undefined,
+        currentVersion: undefined,
+        upgradeTypeDisplayName: undefined,
+        upgradeType: undefined,
+        isWizardRestricted: false,
+        failuresTolerance: undefined,
+        isDowngrade: undefined,
+        downgradeAllowed: undefined
+      })).to.be.true;
+    });
+
     it("App.clusterStatus.setClusterStatus should be called", function() {
       controller.finish();
       expect(App.clusterStatus.setClusterStatus.calledOnce).to.be.true;
@@ -3121,31 +3152,69 @@ describe('App.MainAdminStackAndUpgradeController', function() {
   });
 
   describe("#loadServiceVersionFromVersionDefinitionsSuccessCallback()", function () {
+    var cases;
+    beforeEach(function() {
+      this.appGetStub = sinon.stub(App, 'get');
+    });
 
-    it("serviceVersionsMap should be set", function() {
+    afterEach(function() {
+      App.get.restore();
       controller.set('serviceVersionsMap', {});
-      var data = {
-        items: [
-          {
-            repository_versions: [
-              {
-                RepositoryVersions: {
-                  stack_services: [
-                    {
-                      name: 'S1',
-                      versions: ['v1']
-                    }
-                  ]
+    });
+    cases = [
+      {
+        jsonData: {
+          items: [
+            {
+              ClusterStackVersions: {
+                version: '2.3',
+                stack: 'HDP',
+                state: 'INIT'
+              },
+              repository_versions: [
+                {
+                  RepositoryVersions: {
+                    stack_services: [
+                      { name: 'S3', versions: ['v3']}
+                    ]
+                  }
                 }
-              }
-            ]
-          }
-        ]
-      };
-      controller.loadServiceVersionFromVersionDefinitionsSuccessCallback(data);
-      expect(controller.get('serviceVersionsMap')).to.be.eql({
-        "S1": "v1"
-      });
+              ]
+            },
+            {
+              ClusterStackVersions: {
+                version: '2.2',
+                stack: 'HDP',
+                state: 'INIT'
+              },
+              repository_versions: [
+                {
+                  RepositoryVersions: {
+                    stack_services: [
+                      { name: 'S2', versions: ['v2']}
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        currentStackData: {
+          currentStackVersionNumber: '2.2',
+          currentStackName: 'HDP'
+        },
+        m: 'should add stack services from stack version by current stack name and version number',
+        e: { "S2": "v2"}
+      }
+    ];
+
+    cases.forEach(function(test) {
+      it(test.m, function() {
+        this.appGetStub.withArgs('currentStackName').returns(test.currentStackData.currentStackName)
+          .withArgs('currentStackVersionNumber').returns(test.currentStackData.currentStackVersionNumber);
+        controller.loadServiceVersionFromVersionDefinitionsSuccessCallback(test.jsonData);
+        expect(controller.get('serviceVersionsMap')).to.be.eql(test.e);
+      })
     });
   });
 

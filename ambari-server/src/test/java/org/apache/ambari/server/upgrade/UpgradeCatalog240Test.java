@@ -1545,10 +1545,13 @@ public class UpgradeCatalog240Test {
     Assert.assertNotNull(capturedCRProperties);
     Assert.assertFalse(capturedCRProperties.containsKey("kdc_host"));
     Assert.assertTrue(capturedCRProperties.containsKey("kdc_hosts"));
+    Assert.assertTrue(capturedCRProperties.containsKey("create_ambari_principal"));
 
     for (String property : propertiesKerberosEnv.keySet()) {
       if ("kdc_host".equals(property)) {
         Assert.assertEquals(property, propertiesKerberosEnv.get(property), capturedCRProperties.get("kdc_hosts"));
+      } else if ("create_ambari_principal".equals(property)) {
+        Assert.assertEquals(property, propertiesKerberosEnv.get(property), "false");
       } else {
         Assert.assertEquals(property, propertiesKerberosEnv.get(property), capturedCRProperties.get(property));
       }
@@ -1677,10 +1680,13 @@ public class UpgradeCatalog240Test {
     Assert.assertNotNull(capturedCRProperties);
     Assert.assertFalse(capturedCRProperties.containsKey("kdc_host"));
     Assert.assertTrue(capturedCRProperties.containsKey("kdc_hosts"));
+    Assert.assertTrue(capturedCRProperties.containsKey("create_ambari_principal"));
 
     for (String property : propertiesKerberosEnv.keySet()) {
       if ("kdc_host".equals(property)) {
         Assert.assertEquals(property, propertiesKerberosEnv.get(property), capturedCRProperties.get("kdc_hosts"));
+      } else if ("create_ambari_principal".equals(property)) {
+        Assert.assertEquals(property, propertiesKerberosEnv.get(property), "false");
       } else {
         Assert.assertEquals(property, propertiesKerberosEnv.get(property), capturedCRProperties.get(property));
       }

@@ -42,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -258,6 +259,14 @@ public class ServiceModule extends BaseModule<ServiceModule, ServiceInfo> implem
       serviceInfo.setChecksFolder(parent.getChecksFolder());
     }
 
+    /**
+     * If current stack version does not specify the credential store information
+     * for the service, then use parent definition.
+     */
+    if (serviceInfo.getCredentialStoreInfo() == null) {
+      serviceInfo.setCredentialStoreInfo(parent.getCredentialStoreInfo());
+    }
+
     if (serviceInfo.isSelectionEmpty()) {
       serviceInfo.setSelection(parent.getSelection());
     }
@@ -421,14 +430,22 @@ public class ServiceModule extends BaseModule<ServiceModule, ServiceInfo> implem
     String themesDir = serviceDirectory.getAbsolutePath() + File.separator + serviceInfo.getThemesDir();
 
     if (serviceInfo.getThemes() != null) {
+      List<ThemeInfo> themes = new ArrayList<ThemeInfo>(serviceInfo.getThemes().size());
       for (ThemeInfo themeInfo : serviceInfo.getThemes()) {
         File themeFile = new File(themesDir + File.separator + themeInfo.getFileName());
         ThemeModule module = new ThemeModule(themeFile, themeInfo);
-        themeModules.put(module.getId(), module);
+        if (module.isValid()) {
+          themeModules.put(module.getId(), module);
+          themes.add(themeInfo);
+        }
+        else {
+          //lets not fail if theme contain errors
+          LOG.error("Invalid theme {} for service {}", themeInfo.getFileName(), serviceInfo.getName());
+        }
       }
+      //filter out the invalid themes
+      serviceInfo.setThemes(themes);
     }
-
-    //lets not fail if theme contain errors
   }
 
   /**

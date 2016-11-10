@@ -396,7 +396,6 @@ class TestHDP23StackAdvisor(TestCase):
           "hbase.coprocessor.region.classes": "org.apache.hadoop.hbase.security.access.SecureBulkLoadEndpoint",
           "hbase.coprocessor.master.classes": "",
           "hbase.coprocessor.regionserver.classes": "",
-          "hbase.rpc.controllerfactory.class": "org.apache.hadoop.hbase.ipc.controller.ServerRpcControllerFactory",
           "hbase.region.server.rpc.scheduler.factory.class": "org.apache.hadoop.hbase.ipc.PhoenixRpcSchedulerFactory",
           'hbase.regionserver.wal.codec': 'org.apache.hadoop.hbase.regionserver.wal.IndexedWALEditCodec',
           "hbase.bucketcache.ioengine": "offheap",
@@ -1544,6 +1543,9 @@ class TestHDP23StackAdvisor(TestCase):
   def test_recommendRangerKMSConfigurations(self):
     clusterData = {}
     services = {
+      "ambari-server-properties": {
+        "ambari-server.user": "root"
+        },
       "Versions": {
         "stack_version" : "2.3",
         },
@@ -1584,6 +1586,11 @@ class TestHDP23StackAdvisor(TestCase):
             'db_host' : 'c6401.ambari.apache.org:1521:XE',
             'db_name' : "XE"
           }
+        },
+        'cluster-env': {
+          'properties': {
+            'security_enabled': 'false'
+          }
         }
       },
       "forced-configurations": []
@@ -1605,6 +1612,16 @@ class TestHDP23StackAdvisor(TestCase):
       'ranger-kms-audit': {
           'properties': {
           }
+      },
+      'kms-site': {
+        'properties': {
+        },
+        'property_attributes': {
+        'hadoop.kms.proxyuser.HTTP.hosts': {'delete': 'true'},
+        'hadoop.kms.proxyuser.HTTP.users': {'delete': 'true'},
+        'hadoop.kms.proxyuser.root.hosts': {'delete': 'true'},
+        'hadoop.kms.proxyuser.root.users': {'delete': 'true'}
+        }
       }
     }
 
@@ -1619,6 +1636,8 @@ class TestHDP23StackAdvisor(TestCase):
         "service_name": "KERBEROS"
       }
     })
+    services['configurations']['cluster-env']['properties']['security_enabled'] = "true"
+    services['configurations']['cluster-env']['properties']['ambari_principal_name'] = "ambari-cl1@EXAMPLE.COM"
 
     expected = {
       'kms-properties': {
@@ -1638,6 +1657,14 @@ class TestHDP23StackAdvisor(TestCase):
       'ranger-kms-audit': {
           'properties': {
           }
+      },
+      'kms-site': {
+        'properties': {
+        'hadoop.kms.proxyuser.HTTP.hosts': '*',
+        'hadoop.kms.proxyuser.HTTP.users': '*',
+        'hadoop.kms.proxyuser.ambari-cl1.hosts': '*',
+        'hadoop.kms.proxyuser.ambari-cl1.users': '*'
+        }
       }
     }
 

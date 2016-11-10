@@ -157,15 +157,15 @@ App.config = Em.Object.create({
     var
       baseStackFolder = App.get('currentStackName'),
       singMap = {
-        "1": ">",
-        "-1": "<",
-        "0": "="
+        "1": [">", ">="],
+        "-1": ["<", "<="],
+        "0": ["=", ">=","<="]
       };
 
     this.get('customStackMapping').every(function (stack) {
       if(stack.stackName == App.get('currentStackName')){
         var versionCompare = Em.compare(App.get('currentStackVersionNumber'), stack.stackVersionNumber);
-        if(singMap[versionCompare+""] === stack.sign){
+        if(singMap[versionCompare+""].contains(stack.sign)){
           baseStackFolder = stack.baseStackFolder;
           return false;
         }
@@ -1189,16 +1189,18 @@ App.config = Em.Object.create({
    * Merge values in "stored" to "base" if name matches, it's a value only merge.
    * @param base {Array} Em.Object
    * @param stored {Array} Object
+   * @returns {Object[]|Em.Object[]} base
    */
   mergeStoredValue: function(base, stored) {
     if (stored) {
       base.forEach(function (p) {
-        var sp = stored.filterProperty("filename", p.filename).findProperty("name", p.name);
+        var sp = stored.filterProperty('filename', p.filename).findProperty('name', p.name);
         if (sp) {
-          p.set("value", sp.value);
+          Em.set(p, 'value', Em.get(sp, 'value'));
         }
       });
     }
+    return base;
   },
 
 
@@ -1222,26 +1224,6 @@ App.config = Em.Object.create({
       }).filterProperty('filename', fileName).findProperty('name', name);
     }
     return false;
-  },
-  
-  /**
-   * creates config object with non static properties like 
-   * 'value', 'isFinal', 'errorMessage' and 
-   * 'id', 'name', 'filename',
-   * @param configProperty
-   * @returns {Object}
-   */
-  createMinifiedConfig: function (configProperty) {
-    if (configProperty instanceof Ember.Object) {
-      return configProperty.getProperties('name', 'filename', 'serviceName', 'value', 'isFinal');
-    }
-    return {
-      name: configProperty.name,
-      filename: configProperty.filename,
-      serviceName: configProperty.serviceName,
-      value: configProperty.value,
-      isFinal: configProperty.isFinal
-    }
   },
 
   /**

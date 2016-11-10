@@ -17,11 +17,19 @@
  */
 package org.apache.ambari.server.upgrade;
 
-import com.google.inject.Guice;
-import com.google.inject.Inject;
-import com.google.inject.Injector;
-import com.google.inject.multibindings.Multibinder;
-import com.google.inject.persist.PersistService;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
+
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.audit.AuditLoggerModule;
 import org.apache.ambari.server.configuration.Configuration;
@@ -32,16 +40,11 @@ import org.apache.ambari.server.utils.VersionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Properties;
-import java.util.Set;
+import com.google.inject.Guice;
+import com.google.inject.Inject;
+import com.google.inject.Injector;
+import com.google.inject.multibindings.Multibinder;
+import com.google.inject.persist.PersistService;
 
 public class SchemaUpgradeHelper {
   private static final Logger LOG = LoggerFactory.getLogger
@@ -189,6 +192,7 @@ public class SchemaUpgradeHelper {
       catalogBinder.addBinding().to(UpgradeCatalog222.class);
       catalogBinder.addBinding().to(UpgradeCatalog230.class);
       catalogBinder.addBinding().to(UpgradeCatalog240.class);
+      catalogBinder.addBinding().to(UpgradeCatalog2402.class);
       catalogBinder.addBinding().to(UpgradeCatalog242.class);
       catalogBinder.addBinding().to(UpgradeCatalog250.class);
       catalogBinder.addBinding().to(FinalUpgradeCatalog.class);
@@ -227,12 +231,13 @@ public class SchemaUpgradeHelper {
     }
   }
 
-  public void executeDMLUpdates(List<UpgradeCatalog> upgradeCatalogs) throws AmbariException {
+  public void executeDMLUpdates(List<UpgradeCatalog> upgradeCatalogs, String ambariUpgradeConfigUpdatesFileName) throws AmbariException {
     LOG.info("Executing DML changes.");
 
     if (upgradeCatalogs != null && !upgradeCatalogs.isEmpty()) {
       for (UpgradeCatalog upgradeCatalog : upgradeCatalogs) {
         try {
+          upgradeCatalog.setConfigUpdatesFileName(ambariUpgradeConfigUpdatesFileName);
           upgradeCatalog.upgradeData();
         } catch (Exception e) {
           LOG.error("Upgrade failed. ", e);
@@ -346,13 +351,16 @@ public class SchemaUpgradeHelper {
       List<UpgradeCatalog> upgradeCatalogs =
         schemaUpgradeHelper.getUpgradePath(sourceVersion, targetVersion);
 
+      String date = new SimpleDateFormat("MM-dd-yyyy_HH:mm:ss").format(new Date());
+      String ambariUpgradeConfigUpdatesFileName = "ambari_upgrade_config_changes_" + date + ".json";
+
       schemaUpgradeHelper.executeUpgrade(upgradeCatalogs);
 
       schemaUpgradeHelper.startPersistenceService();
 
       schemaUpgradeHelper.executePreDMLUpdates(upgradeCatalogs);
 
-      schemaUpgradeHelper.executeDMLUpdates(upgradeCatalogs);
+      schemaUpgradeHelper.executeDMLUpdates(upgradeCatalogs, ambariUpgradeConfigUpdatesFileName);
 
       schemaUpgradeHelper.executeOnPostUpgrade(upgradeCatalogs);
 

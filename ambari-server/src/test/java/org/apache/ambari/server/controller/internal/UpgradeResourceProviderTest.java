@@ -35,6 +35,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,6 +57,7 @@ import org.apache.ambari.server.controller.spi.Request;
 import org.apache.ambari.server.controller.spi.RequestStatus;
 import org.apache.ambari.server.controller.spi.Resource;
 import org.apache.ambari.server.controller.spi.ResourceProvider;
+import org.apache.ambari.server.controller.spi.SystemException;
 import org.apache.ambari.server.controller.utilities.PredicateBuilder;
 import org.apache.ambari.server.controller.utilities.PropertyHelper;
 import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
@@ -111,6 +113,7 @@ import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -232,14 +235,12 @@ public class UpgradeResourceProviderTest {
     hostAttributes.put("os_release_version", "6.3");
     host.setHostAttributes(hostAttributes);
     host.setState(HostState.HEALTHY);
-    host.persist();
 
     clusters.mapHostToCluster("h1", "c1");
 
     // add a single ZK server
     Service service = cluster.addService("ZOOKEEPER");
     service.setDesiredStackVersion(cluster.getDesiredStackVersion());
-    service.persist();
 
     ServiceComponent component = service.addServiceComponent("ZOOKEEPER_SERVER");
     ServiceComponentHost sch = component.addServiceComponentHost("h1");
@@ -590,7 +591,6 @@ public class UpgradeResourceProviderTest {
     hostAttributes.put("os_family", "redhat");
     hostAttributes.put("os_release_version", "6.3");
     host.setHostAttributes(hostAttributes);
-    host.persist();
 
     clusters.mapHostToCluster("h2", "c1");
     Cluster cluster = clusters.getCluster("c1");
@@ -736,7 +736,6 @@ public class UpgradeResourceProviderTest {
     // add additional service for the test
     Service service = cluster.addService("HIVE");
     service.setDesiredStackVersion(cluster.getDesiredStackVersion());
-    service.persist();
 
     ServiceComponent component = service.addServiceComponent("HIVE_SERVER");
     ServiceComponentHost sch = component.addServiceComponentHost("h1");
@@ -1428,6 +1427,59 @@ public class UpgradeResourceProviderTest {
     List<Long> requestIds = requestDao.findAllRequestIds(1, true, cluster.getClusterId());
     assertEquals(0, requestIds.size());
   }
+
+  /**
+   * Tests that a {@link UpgradeType#HOST_ORDERED} upgrade throws an exception
+   * on missing hosts.
+   *
+   * @throws Exception
+   */
+  @Test()
+  public void testCreateHostOrderedUpgradeThrowsExceptions() throws Exception {
+    Cluster cluster = clusters.getCluster("c1");
+
+    Map<String, Object> requestProps = new HashMap<String, Object>();
+    requestProps.put(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME, "c1");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_VERSION, "2.2.0.0");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_PACK, "upgrade_test_host_ordered");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_TYPE, UpgradeType.HOST_ORDERED.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_PREREQUISITE_CHECKS, Boolean.TRUE.toString());
+
+    ResourceProvider upgradeResourceProvider = createProvider(amc);
+    Request request = PropertyHelper.getCreateRequest(Collections.singleton(requestProps), null);
+
+    try {
+      upgradeResourceProvider.createResources(request);
+      Assert.fail("The request should have failed due to the missing Upgrade/host_order property");
+    } catch( SystemException systemException ){
+      // expected
+    }
+
+    // stick a bad host_ordered_hosts in there which has the wrong hosts
+    Set<Map<String, List<String>>> hostsOrder = new LinkedHashSet<>();
+    Map<String, List<String>> hostGrouping = new HashMap<>();
+    hostGrouping.put("hosts", Lists.newArrayList("invalid-host"));
+    hostsOrder.add(hostGrouping);
+
+    requestProps.put(UpgradeResourceProvider.UPGRADE_HOST_ORDERED_HOSTS, hostsOrder);
+
+    try {
+      upgradeResourceProvider.createResources(request);
+      Assert.fail("The request should have failed due to invalid hosts");
+    } catch (SystemException systemException) {
+      // expected
+    }
+
+    // use correct hosts now
+    hostsOrder = new LinkedHashSet<>();
+    hostGrouping = new HashMap<>();
+    hostGrouping.put("hosts", Lists.newArrayList("h1"));
+    hostsOrder.add(hostGrouping);
+
+    requestProps.put(UpgradeResourceProvider.UPGRADE_HOST_ORDERED_HOSTS, hostsOrder);
+    upgradeResourceProvider.createResources(request);
+  }
+
 
   private String parseSingleMessage(String msgStr){
     JsonParser parser = new JsonParser();

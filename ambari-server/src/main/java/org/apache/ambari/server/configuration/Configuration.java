@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,10 +18,13 @@
 package org.apache.ambari.server.configuration;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Writer;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -49,6 +52,7 @@ import org.apache.ambari.annotations.Markdown;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.actionmanager.HostRoleCommand;
 import org.apache.ambari.server.actionmanager.Stage;
+import org.apache.ambari.server.actionmanager.CommandExecutionType;
 import org.apache.ambari.server.controller.spi.PropertyProvider;
 import org.apache.ambari.server.events.listeners.alerts.AlertReceivedListener;
 import org.apache.ambari.server.orm.JPATableGenerationStrategy;
@@ -56,18 +60,22 @@ import org.apache.ambari.server.orm.PersistenceType;
 import org.apache.ambari.server.orm.dao.HostRoleCommandStatusSummaryDTO;
 import org.apache.ambari.server.orm.entities.StageEntity;
 import org.apache.ambari.server.security.ClientSecurityType;
+import org.apache.ambari.server.security.authentication.kerberos.AmbariKerberosAuthenticationProperties;
 import org.apache.ambari.server.security.authorization.LdapServerProperties;
+import org.apache.ambari.server.security.authorization.UserType;
 import org.apache.ambari.server.security.authorization.jwt.JwtAuthenticationProperties;
 import org.apache.ambari.server.security.encryption.CertificateUtils;
 import org.apache.ambari.server.security.encryption.CredentialProvider;
 import org.apache.ambari.server.state.services.MetricsRetrievalService;
 import org.apache.ambari.server.state.services.RetryUpgradeActionService;
 import org.apache.ambari.server.state.stack.OsFamily;
+import org.apache.ambari.server.upgrade.AbstractUpgradeCatalog;
 import org.apache.ambari.server.utils.AmbariPath;
 import org.apache.ambari.server.utils.DateUtils;
 import org.apache.ambari.server.utils.HostUtils;
 import org.apache.ambari.server.utils.Parallel;
 import org.apache.ambari.server.utils.ShellCommandUtil;
+import org.apache.ambari.server.utils.StageUtils;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -81,10 +89,14 @@ import org.apache.commons.lang.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
@@ -104,6 +116,10 @@ import com.google.inject.Singleton;
  */
 @Singleton
 public class Configuration {
+  /**
+   * JVM property with optional path to Makrdown template file.
+   */
+  private static final String AMBARI_CONFIGURATION_MD_TEMPLATE_PROPERTY = "ambari.configuration.md.template";
 
   /**
    * The file to generate the complete Markdown documentation.
@@ -644,6 +660,16 @@ public class Configuration {
       "common.services.path", null);
 
   /**
+   * Determines whether an existing local users will be updated as LDAP users.
+   */
+  @Markdown(
+      description = "Determines how to handle username collision while updating from LDAP.",
+      examples = { "skip", "convert" }
+  )
+  public static final ConfigurationProperty<String> LDAP_SYNC_USERNAME_COLLISIONS_BEHAVIOR = new ConfigurationProperty<>(
+      "ldap.sync.username.collision.behavior", "convert");
+
+  /**
    * The location on the Ambari Server where stack extensions exist.
    */
   @Markdown(
@@ -936,6 +962,15 @@ public class Configuration {
       "authentication.ldap.usernameAttribute", "uid");
 
   /**
+   * Declares whether to force the ldap user name to be lowercase or leave as-is. This is useful when
+   * local user names are expected to be lowercase but the LDAP user names are not.
+   */
+  @Markdown(description = "Declares whether to force the ldap user name to be lowercase or leave as-is." +
+      " This is useful when local user names are expected to be lowercase but the LDAP user names are not.")
+  public static final ConfigurationProperty<String> LDAP_USERNAME_FORCE_LOWERCASE = new ConfigurationProperty<>(
+      "authentication.ldap.username.forceLowercase", "false");
+
+  /**
    * The filter used when searching for users in LDAP.
    */
   @Markdown(description = "The filter used when searching for users in LDAP.")
@@ -1098,6 +1133,12 @@ public class Configuration {
       "authentication.ldap.sync.groupMemberFilter",
       LDAP_SYNC_MEMBER_FILTER_DEFAULT);
 
+
+  /**
+   * Enable the profiling of internal locks.
+   */
+  @Markdown(description = "Enable the profiling of internal locks.")
+  public static final ConfigurationProperty<Boolean> SERVER_LOCKS_PROFILING = new ConfigurationProperty<>("server.locks.profiling", Boolean.FALSE);
 
   /**
    * The size of the cache used to hold {@link HostRoleCommand} instances in-memory.
@@ -1311,6 +1352,54 @@ public class Configuration {
       description = "The original URL to use when constructing the logic URL for JWT.")
   public static final ConfigurationProperty<String> JWT_ORIGINAL_URL_QUERY_PARAM = new ConfigurationProperty<>(
       "authentication.jwt.originalUrlParamName", "originalUrl");
+
+  /* =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+   * Kerberos authentication-specific properties
+   * =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-= */
+  /**
+   * Determines whether to use Kerberos (SPNEGO) authentication when connecting Ambari.
+   */
+  @Markdown(description = "Determines whether to use Kerberos (SPNEGO) authentication when connecting Ambari.")
+  public static final ConfigurationProperty<Boolean> KERBEROS_AUTH_ENABLED = new ConfigurationProperty<>(
+      "authentication.kerberos.enabled", Boolean.FALSE);
+
+  /**
+   * The Kerberos principal name to use when verifying user-supplied Kerberos tokens for authentication via SPNEGO.
+   */
+  @Markdown(description = "The Kerberos principal name to use when verifying user-supplied Kerberos tokens for authentication via SPNEGO")
+  public static final ConfigurationProperty<String> KERBEROS_AUTH_SPNEGO_PRINCIPAL = new ConfigurationProperty<>(
+      "authentication.kerberos.spnego.principal", "HTTP/_HOST");
+
+  /**
+   * The Kerberos identity to use when verifying user-supplied Kerberos tokens for authentication via SPNEGO.
+   */
+  @Markdown(description = "The Kerberos keytab file to use when verifying user-supplied Kerberos tokens for authentication via SPNEGO")
+  public static final ConfigurationProperty<String> KERBEROS_AUTH_SPNEGO_KEYTAB_FILE = new ConfigurationProperty<>(
+      "authentication.kerberos.spnego.keytab.file", "/etc/security/keytabs/spnego.service.keytab");
+
+  /**
+   * A comma-delimited (ordered) list of preferred user types to use when finding the Ambari user
+   * account for the user-supplied Kerberos identity during authentication via SPNEGO.
+   */
+  @Markdown(description = "A comma-delimited (ordered) list of preferred user types to use when finding the Ambari user account for the user-supplied Kerberos identity during authentication via SPNEGO")
+  public static final ConfigurationProperty<String> KERBEROS_AUTH_USER_TYPES = new ConfigurationProperty<>(
+      "authentication.kerberos.user.types", "LDAP");
+
+  /**
+   * The auth-to-local rules set to use when translating a user's principal name to a local user name
+   * during authentication via SPNEGO.
+   */
+  @Markdown(description = "The auth-to-local rules set to use when translating a user's principal name to a local user name during authentication via SPNEGO.")
+  public static final ConfigurationProperty<String> KERBEROS_AUTH_AUTH_TO_LOCAL_RULES  = new ConfigurationProperty<>(
+      "authentication.kerberos.auth_to_local.rules", "DEFAULT");
+  /* =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+   * Kerberos authentication-specific properties (end)
+   * =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-= */
+
+
+  @Markdown(description = "The number of times failed kerberos operations should be retried to execute.")
+  public static final ConfigurationProperty<Integer> KERBEROS_OPERATION_RETRIES = new ConfigurationProperty<>(
+      "kerberos.operation.retries", 3);
 
   /**
    * The type of connection pool to use with JDBC connections to the database.
@@ -1742,6 +1831,15 @@ public class Configuration {
   @Markdown(description = "Determines whether operations in different execution requests can be run concurrently.")
   public static final ConfigurationProperty<Boolean> PARALLEL_STAGE_EXECUTION = new ConfigurationProperty<>(
       "server.stages.parallel", Boolean.TRUE);
+
+  /**
+   * In case this is set to DEPENDENCY_ORDERED one stage is created for each request and command dependencies are
+   * handled directly by ActionScheduler. In case of STAGE (which is the default) one or more stages are
+   * created depending on dependencies.
+   */
+  @Markdown(description = "How to execute commands in one stage")
+  public static final ConfigurationProperty<String> COMMAND_EXECUTION_TYPE = new ConfigurationProperty<>(
+    "server.stage.command.execution_type", CommandExecutionType.STAGE.toString());
 
   /**
    * The time, in {@link TimeUnit#SECONDS}, before agent commands are killed.
@@ -2208,6 +2306,13 @@ public class Configuration {
       "alerts.snmp.dispatcher.udp.port", null);
 
   /**
+   * The UDP port to use when binding the Ambari SNMP dispatcher on Ambari Server startup.
+   */
+  @Markdown(description = "The UDP port to use when binding the Ambari SNMP dispatcher on Ambari Server startup. If no port is specified, then a random port will be used.")
+  public static final ConfigurationProperty<String> ALERTS_AMBARI_SNMP_DISPATCH_UDP_PORT = new ConfigurationProperty<>(
+          "alerts.ambari.snmp.dispatcher.udp.port", null);
+
+  /**
    * The amount of time, in {@link TimeUnit#MINUTES}, that the
    * {@link MetricsRetrievalService} will cache retrieved metric data.
    */
@@ -2280,6 +2385,10 @@ public class Configuration {
   public static final ConfigurationProperty<Integer> METRIC_RETRIEVAL_SERVICE_REQUEST_TTL = new ConfigurationProperty<>(
       "metrics.retrieval-service.request.ttl", 5);
 
+  // Ambari server log4j file name
+  public static final String AMBARI_LOG_FILE = "log4j.properties";
+
+
   /**
    * The number of tasks that can be queried from the database at once In the
    * case of more tasks, multiple queries are issued
@@ -2300,10 +2409,19 @@ public class Configuration {
   public static final ConfigurationProperty<Boolean> ACTIVE_INSTANCE = new ConfigurationProperty<>(
           "active.instance", Boolean.TRUE);
 
+  /**
+   * PropertyConfigurator checks log4j.properties file change every LOG4JMONITOR_DELAY milliseconds.
+   */
+  @Markdown(description = "Indicates the delay, in milliseconds, for the log4j monitor to check for changes")
+  public static final ConfigurationProperty<Long> LOG4JMONITOR_DELAY = new ConfigurationProperty<>(
+          "log4j.monitor.delay", TimeUnit.MINUTES.toMillis(5));
+
   private static final Logger LOG = LoggerFactory.getLogger(
     Configuration.class);
 
   private Properties properties;
+  private Properties log4jProperties = new Properties();
+  private String ambariUpgradeConfigUpdatesFilePath;
   private JsonObject hostChangesJson;
   private Map<String, String> configsMap;
   private Map<String, String> agentConfigsMap;
@@ -2316,6 +2434,145 @@ public class Configuration {
   private Map<String, String> databaseConnectorNames = new HashMap<>();
   private Map<String, String> databasePreviousConnectorNames = new HashMap<>();
 
+
+  /**
+   * Find, read, and parse the log4j.properties file.
+   * @return the properties that were found or empty if no file was found
+   */
+  public Properties getLog4jProperties() {
+    if (!log4jProperties.isEmpty()) {
+      return log4jProperties;
+    }
+
+    //Get log4j.properties file stream from classpath
+    InputStream inputStream = Configuration.class.getClassLoader().getResourceAsStream(AMBARI_LOG_FILE);
+
+    if (inputStream == null) {
+      throw new RuntimeException(AMBARI_LOG_FILE + " not found in classpath");
+    }
+
+    // load the properties
+    try {
+      log4jProperties.load(inputStream);
+      inputStream.close();
+    } catch (FileNotFoundException fnf) {
+      LOG.info("No configuration file " + AMBARI_LOG_FILE + " found in classpath.", fnf);
+    } catch (IOException ie) {
+      throw new IllegalArgumentException("Can't read configuration file " +
+              AMBARI_LOG_FILE, ie);
+    }
+
+    return log4jProperties;
+  }
+
+
+  public void wrtiteToAmbariUpgradeConfigUpdatesFile(Multimap<AbstractUpgradeCatalog.ConfigUpdateType, Entry<String, String>> propertiesToLog,
+                                                     String configType, String serviceName, String wrtiteToAmbariUpgradeConfigUpdatesFile) {
+    try {
+      if (ambariUpgradeConfigUpdatesFilePath == null) {
+        Properties log4jProperties = getLog4jProperties();
+        if (log4jProperties != null) {
+          String logPath = log4jProperties.getProperty("ambari.log.dir");
+          String rootPath = log4jProperties.getProperty("ambari.root.dir");
+          logPath = StringUtils.replace(logPath, "${ambari.root.dir}", rootPath);
+          logPath = StringUtils.replace(logPath, "//", "/");
+          if (StringUtils.isNotEmpty(logPath)) {
+            ambariUpgradeConfigUpdatesFilePath = logPath + File.separator + wrtiteToAmbariUpgradeConfigUpdatesFile;
+          }
+        } else {
+          LOG.warn("Log4j properties are not available");
+        }
+      }
+    } catch(Exception e) {
+      LOG.warn("Failed to create log file name or get path for it:", e);
+    }
+
+    if (StringUtils.isNotEmpty(ambariUpgradeConfigUpdatesFilePath)) {
+      Gson gson = new GsonBuilder().setPrettyPrinting().create();
+      Writer fileWriter = null;
+      try {
+        JsonObject rootJson = readFileToJSON(ambariUpgradeConfigUpdatesFilePath);
+        buildServiceJson(propertiesToLog, configType, serviceName, rootJson);
+
+        fileWriter = new FileWriter(ambariUpgradeConfigUpdatesFilePath);
+        gson.toJson(rootJson, fileWriter);
+      } catch (IllegalArgumentException e) {
+        JsonObject rootJson = new JsonObject();
+        buildServiceJson(propertiesToLog, configType, serviceName, rootJson);
+
+        try {
+          fileWriter = new FileWriter(ambariUpgradeConfigUpdatesFilePath);
+          gson.toJson(rootJson, fileWriter);
+        } catch (IOException e1) {
+          LOG.error("Unable to write data into " + ambariUpgradeConfigUpdatesFilePath, e);
+        }
+      } catch (IOException e) {
+        LOG.error("Unable to write data into " + ambariUpgradeConfigUpdatesFilePath, e);
+      } finally {
+        try {
+          fileWriter.close();
+        } catch (IOException e) {
+          LOG.error("Unable to close file " + ambariUpgradeConfigUpdatesFilePath, e);
+        }
+      }
+    }
+  }
+
+  private void buildServiceJson(Multimap<AbstractUpgradeCatalog.ConfigUpdateType, Entry<String, String>> propertiesToLog,
+                                       String configType, String serviceName, JsonObject rootJson) {
+    JsonElement serviceJson = null;
+    serviceJson = rootJson.get(serviceName);
+    JsonObject serviceJsonObject = null;
+    if (serviceJson != null) {
+      serviceJsonObject = serviceJson.getAsJsonObject();
+    } else {
+      serviceJsonObject = new JsonObject();
+    }
+    buildConfigJson(propertiesToLog, serviceJsonObject, configType);
+    if (serviceName == null) {
+      serviceName = "General";
+    }
+
+    rootJson.add(serviceName, serviceJsonObject);
+  }
+
+  private void buildConfigJson(Multimap<AbstractUpgradeCatalog.ConfigUpdateType, Entry<String, String>> propertiesToLog,
+                                      JsonObject serviceJson, String configType) {
+    JsonElement configJson = null;
+    configJson = serviceJson.get(configType);
+    JsonObject configJsonObject = null;
+    if (configJson != null) {
+      configJsonObject = configJson.getAsJsonObject();
+    } else {
+      configJsonObject = new JsonObject();
+    }
+    buildConfigUpdateTypes(propertiesToLog, configJsonObject);
+    serviceJson.add(configType, configJsonObject);
+  }
+
+  private void buildConfigUpdateTypes(Multimap<AbstractUpgradeCatalog.ConfigUpdateType, Entry<String, String>> propertiesToLog,
+                                            JsonObject configJson) {
+    for (AbstractUpgradeCatalog.ConfigUpdateType configUpdateType : propertiesToLog.keySet()) {
+      JsonElement currentConfigUpdateType = configJson.get(configUpdateType.getDescription());
+      JsonObject currentConfigUpdateTypeJsonObject = null;
+      if (currentConfigUpdateType != null) {
+        currentConfigUpdateTypeJsonObject = currentConfigUpdateType.getAsJsonObject();
+      } else {
+        currentConfigUpdateTypeJsonObject = new JsonObject();
+      }
+      for (Entry<String, String> property : propertiesToLog.get(configUpdateType)) {
+        currentConfigUpdateTypeJsonObject.add(property.getKey(), new JsonPrimitive(property.getValue()));
+      }
+      configJson.add(configUpdateType.getDescription(), currentConfigUpdateTypeJsonObject);
+    }
+  }
+
+
+  /**
+   * The Kerberos authentication-specific properties container (for convenience)
+   */
+  private final AmbariKerberosAuthenticationProperties kerberosAuthenticationProperties;
+
   static {
     if (System.getProperty("os.name").contains("Windows")) {
       DEF_ARCHIVE_EXTENSION = ".zip";
@@ -2325,6 +2582,16 @@ public class Configuration {
       DEF_ARCHIVE_EXTENSION = ".tar.gz";
       DEF_ARCHIVE_CONTENT_TYPE = "application/x-ustar";
     }
+  }
+
+  /**
+   * Ldap username collision handling behavior.
+   * CONVERT - convert existing local users to LDAP users.
+   * SKIP - skip existing local users.
+   */
+  public enum LdapUsernameCollisionHandlingBehavior {
+    CONVERT,
+    SKIP
   }
 
   /**
@@ -2458,6 +2725,7 @@ public class Configuration {
     configsMap.put(JAVA_HOME.getKey(), getProperty(JAVA_HOME));
     configsMap.put(PARALLEL_STAGE_EXECUTION.getKey(), getProperty(PARALLEL_STAGE_EXECUTION));
     configsMap.put(SERVER_TMP_DIR.getKey(), getProperty(SERVER_TMP_DIR));
+    configsMap.put(LOG4JMONITOR_DELAY.getKey(), getProperty(LOG4JMONITOR_DELAY));
     configsMap.put(EXTERNAL_SCRIPT_TIMEOUT.getKey(), getProperty(EXTERNAL_SCRIPT_TIMEOUT));
     configsMap.put(SHARED_RESOURCES_DIR.getKey(), getProperty(SHARED_RESOURCES_DIR));
     configsMap.put(KDC_PORT.getKey(), getProperty(KDC_PORT));
@@ -2520,6 +2788,9 @@ public class Configuration {
 
       configsMap.put(CLIENT_API_SSL_CRT_PASS.getKey(), password);
     }
+
+    // Capture the Kerberos authentication-related properties
+    kerberosAuthenticationProperties = createKerberosAuthenticationProperties();
 
     loadSSLParams();
   }
@@ -2793,6 +3064,10 @@ public class Configuration {
 
   public String areHostsSysPrepped(){
     return getProperty(SYS_PREPPED_HOSTS);
+  }
+
+  public CommandExecutionType getStageExecutionType(){
+    return CommandExecutionType.valueOf(getProperty(COMMAND_EXECUTION_TYPE));
   }
 
   public String getStackAdvisorScript() {
@@ -3328,6 +3603,7 @@ public class Configuration {
 
     ldapServerProperties.setBaseDN(getProperty(LDAP_BASE_DN));
     ldapServerProperties.setUsernameAttribute(getProperty(LDAP_USERNAME_ATTRIBUTE));
+    ldapServerProperties.setForceUsernameToLowercase(Boolean.parseBoolean(getProperty(LDAP_USERNAME_FORCE_LOWERCASE)));
     ldapServerProperties.setUserBase(getProperty(LDAP_USER_BASE));
     ldapServerProperties.setUserObjectClass(getProperty(LDAP_USER_OBJECT_CLASS));
     ldapServerProperties.setDnAttribute(getProperty(LDAP_DN_ATTRIBUTE));
@@ -4148,6 +4424,18 @@ public class Configuration {
   }
 
   /**
+   * Determines whether an existing local users will be skipped on updated during LDAP sync.
+   *
+   * @return true if ambari need to skip existing user during LDAP sync.
+   */
+  public LdapUsernameCollisionHandlingBehavior getLdapSyncCollisionHandlingBehavior() {
+    if (getProperty(LDAP_SYNC_USERNAME_COLLISIONS_BEHAVIOR).toLowerCase().equals("skip")) {
+      return LdapUsernameCollisionHandlingBehavior.SKIP;
+    }
+    return LdapUsernameCollisionHandlingBehavior.CONVERT;
+  }
+
+  /**
    * Gets the type of database by examining the {@link #getDatabaseUrl()} JDBC
    * URL.
    *
@@ -4447,6 +4735,15 @@ public class Configuration {
   }
 
   /**
+   * Gets the Kerberos authentication-specific properties container
+   *
+   * @return an AmbariKerberosAuthenticationProperties
+   */
+  public AmbariKerberosAuthenticationProperties getKerberosAuthenticationProperties() {
+    return kerberosAuthenticationProperties;
+  }
+
+  /**
    * Ambari server temp dir
    * @return server temp dir
    */
@@ -4562,6 +4859,13 @@ public class Configuration {
   }
 
   /**
+   * @return true if lock profiling is enabled for Ambari Server, in which case LockFactory should create instrumented locks
+   */
+  public boolean isServerLocksProfilingEnabled() {
+    return Boolean.parseBoolean(getProperty(SERVER_LOCKS_PROFILING));
+  }
+
+  /**
    * @return the capacity of async audit logger
    */
   public int getAuditLoggerCapacity() {
@@ -4574,6 +4878,15 @@ public class Configuration {
    */
   public Integer getSNMPUdpBindPort() {
     String udpPort = getProperty(ALERTS_SNMP_DISPATCH_UDP_PORT);
+    return StringUtils.isEmpty(udpPort) ? null : Integer.parseInt(udpPort);
+  }
+
+  /**
+   * Customized UDP port for Ambari SNMP dispatcher
+   * @return Integer if property exists else null
+   */
+  public Integer getAmbariSNMPUdpBindPort() {
+    String udpPort = getProperty(ALERTS_AMBARI_SNMP_DISPATCH_UDP_PORT);
     return StringUtils.isEmpty(udpPort) ? null : Integer.parseInt(udpPort);
   }
 
@@ -4834,7 +5147,12 @@ public class Configuration {
     // replace the tokens in the markdown template and write out the final MD file
     InputStream inputStream = null;
     try {
-      inputStream = Configuration.class.getResourceAsStream(MARKDOWN_TEMPLATE_FILE);
+      if (System.getProperties().containsKey(AMBARI_CONFIGURATION_MD_TEMPLATE_PROPERTY)) {
+        // for using from IDEA or other tools without whole compilation
+        inputStream = new FileInputStream(System.getProperties().getProperty(AMBARI_CONFIGURATION_MD_TEMPLATE_PROPERTY));
+      } else {
+        inputStream = Configuration.class.getResourceAsStream(MARKDOWN_TEMPLATE_FILE);
+      }
       String template = IOUtils.toString(inputStream);
       String markdown = template.replace(MARKDOWN_CONFIGURATION_TABLE_KEY, allPropertiesBuffer.toString());
       markdown = markdown.replace(MARKDOWN_BASELINE_VALUES_KEY, baselineBuffer.toString());
@@ -5063,4 +5381,136 @@ public class Configuration {
     String value();
   }
 
+  /**
+   * Creates an AmbariKerberosAuthenticationProperties instance containing the Kerberos authentication-specific
+   * properties.
+   *
+   * The relevant properties are processed to set any default values or translate the propery values
+   * into usable data for the Kerberos authentication logic.
+   *
+   * @return
+   */
+  private AmbariKerberosAuthenticationProperties createKerberosAuthenticationProperties() {
+    AmbariKerberosAuthenticationProperties kerberosAuthProperties = new AmbariKerberosAuthenticationProperties();
+
+    kerberosAuthProperties.setKerberosAuthenticationEnabled(Boolean.valueOf(getProperty(KERBEROS_AUTH_ENABLED)));
+
+    // if Kerberos authentication is enabled, continue; else ignore the rest of related properties since
+    // they will not be used.
+    if (!kerberosAuthProperties.isKerberosAuthenticationEnabled()) {
+      return kerberosAuthProperties;
+    }
+
+    // Get and process the configured user type values to convert the comma-delimited string of
+    // user types into a ordered (as found in the comma-delimited value) list of UserType values.
+    String userTypes = getProperty(KERBEROS_AUTH_USER_TYPES);
+    List<UserType> orderedUserTypes = new ArrayList<UserType>();
+
+    String[] types = userTypes.split(",");
+    for (String type : types) {
+      type = type.trim();
+
+      if (!type.isEmpty()) {
+        try {
+          orderedUserTypes.add(UserType.valueOf(type.toUpperCase()));
+        } catch (IllegalArgumentException e) {
+          String message = String.format("While processing ordered user types from %s, " +
+                  "%s was found to be an invalid user type.",
+              KERBEROS_AUTH_USER_TYPES.getKey(), type);
+          LOG.error(message);
+          throw new IllegalArgumentException(message, e);
+        }
+      }
+    }
+
+    // If no user types have been specified, assume only LDAP users...
+    if (orderedUserTypes.isEmpty()) {
+      LOG.info("No (valid) user types were specified in {}. Using the default value of LOCAL.",
+          KERBEROS_AUTH_USER_TYPES.getKey());
+      orderedUserTypes.add(UserType.LDAP);
+    }
+
+    kerberosAuthProperties.setOrderedUserTypes(orderedUserTypes);
+
+    // Get and process the SPNEGO principal name.  If it exists and contains the host replacement
+    // indicator (_HOST), replace it with the hostname of the current host.
+    String spnegoPrincipalName = getProperty(KERBEROS_AUTH_SPNEGO_PRINCIPAL);
+
+    if ((spnegoPrincipalName != null) && (spnegoPrincipalName.contains("_HOST"))) {
+      String hostName = StageUtils.getHostName();
+
+      if (StringUtils.isEmpty(hostName)) {
+        LOG.warn("Cannot replace _HOST in the configured SPNEGO principal name with the host name this host since it is not available");
+      } else {
+        LOG.info("Replacing _HOST in the configured SPNEGO principal name with the host name this host: {}", hostName);
+        spnegoPrincipalName = spnegoPrincipalName.replaceAll("_HOST", hostName);
+      }
+    }
+
+    kerberosAuthProperties.setSpnegoPrincipalName(spnegoPrincipalName);
+
+    // Validate the SPNEGO principal name to ensure it was set.
+    // Log any found issues.
+    if (StringUtils.isEmpty(kerberosAuthProperties.getSpnegoPrincipalName())) {
+      String message = String.format("The SPNEGO principal name specified in %s is empty. " +
+              "This will cause issues authenticating users using Kerberos.",
+          KERBEROS_AUTH_SPNEGO_PRINCIPAL.getKey());
+      LOG.error(message);
+      throw new IllegalArgumentException(message);
+    }
+
+    // Get the SPNEGO keytab file. There is nothing special to process for this value.
+    kerberosAuthProperties.setSpnegoKeytabFilePath(getProperty(KERBEROS_AUTH_SPNEGO_KEYTAB_FILE));
+
+    // Validate the SPNEGO keytab file to ensure it was set, it exists and it is readable by Ambari.
+    // Log any found issues.
+    if (StringUtils.isEmpty(kerberosAuthProperties.getSpnegoKeytabFilePath())) {
+      String message = String.format("The SPNEGO keytab file path specified in %s is empty. " +
+              "This will cause issues authenticating users using Kerberos.",
+          KERBEROS_AUTH_SPNEGO_KEYTAB_FILE.getKey());
+      LOG.error(message);
+      throw new IllegalArgumentException(message);
+    } else {
+      File keytabFile = new File(kerberosAuthProperties.getSpnegoKeytabFilePath());
+      if (!keytabFile.exists()) {
+        String message = String.format("The SPNEGO keytab file path (%s) specified in %s does not exist. " +
+                "This will cause issues authenticating users using Kerberos.",
+            keytabFile.getAbsolutePath(), KERBEROS_AUTH_SPNEGO_KEYTAB_FILE.getKey());
+        LOG.error(message);
+        throw new IllegalArgumentException(message);
+      } else if (!keytabFile.canRead()) {
+        String message = String.format("The SPNEGO keytab file path (%s) specified in %s cannot be read. " +
+                "This will cause issues authenticating users using Kerberos.",
+            keytabFile.getAbsolutePath(), KERBEROS_AUTH_SPNEGO_KEYTAB_FILE.getKey());
+        LOG.error(message);
+        throw new IllegalArgumentException(message);
+      }
+    }
+
+    // Get the auth-to-local rule set. There is nothing special to process for this value.
+    kerberosAuthProperties.setAuthToLocalRules(getProperty(KERBEROS_AUTH_AUTH_TO_LOCAL_RULES));
+
+    LOG.info("Kerberos authentication is enabled:\n " +
+            "\t{}: {}\n" +
+            "\t{}: {}\n" +
+            "\t{}: {}\n" +
+            "\t{}: {}\n" +
+            "\t{}: {}\n",
+        KERBEROS_AUTH_ENABLED.getKey(),
+        kerberosAuthProperties.isKerberosAuthenticationEnabled(),
+        KERBEROS_AUTH_SPNEGO_PRINCIPAL.getKey(),
+        kerberosAuthProperties.getSpnegoPrincipalName(),
+        KERBEROS_AUTH_SPNEGO_KEYTAB_FILE.getKey(),
+        kerberosAuthProperties.getSpnegoKeytabFilePath(),
+        KERBEROS_AUTH_USER_TYPES.getKey(),
+        kerberosAuthProperties.getOrderedUserTypes(),
+        KERBEROS_AUTH_AUTH_TO_LOCAL_RULES.getKey(),
+        kerberosAuthProperties.getAuthToLocalRules());
+
+    return kerberosAuthProperties;
+  }
+
+  public int getKerberosOperationRetries(){
+    return Integer.valueOf(getProperty(KERBEROS_OPERATION_RETRIES));
+  }
 }

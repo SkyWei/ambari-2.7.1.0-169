@@ -18,12 +18,15 @@
 package org.apache.ambari.server.upgrade;
 
 import java.io.File;
+import java.io.FileReader;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.StringReader;
+import java.lang.reflect.Type;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.AbstractMap;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -56,11 +59,13 @@ import org.apache.ambari.server.orm.dao.MetainfoDAO;
 import org.apache.ambari.server.orm.dao.PermissionDAO;
 import org.apache.ambari.server.orm.dao.ResourceTypeDAO;
 import org.apache.ambari.server.orm.dao.RoleAuthorizationDAO;
+import org.apache.ambari.server.orm.dao.WidgetDAO;
 import org.apache.ambari.server.orm.entities.AlertDefinitionEntity;
 import org.apache.ambari.server.orm.entities.ArtifactEntity;
 import org.apache.ambari.server.orm.entities.MetainfoEntity;
 import org.apache.ambari.server.orm.entities.PermissionEntity;
 import org.apache.ambari.server.orm.entities.RoleAuthorizationEntity;
+import org.apache.ambari.server.orm.entities.WidgetEntity;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -69,12 +74,15 @@ import org.apache.ambari.server.state.PropertyInfo;
 import org.apache.ambari.server.state.PropertyUpgradeBehavior;
 import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.state.StackId;
+import org.apache.ambari.server.state.StackInfo;
 import org.apache.ambari.server.state.alert.SourceType;
 import org.apache.ambari.server.state.kerberos.AbstractKerberosDescriptorContainer;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptorFactory;
 import org.apache.ambari.server.state.kerberos.KerberosIdentityDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosServiceDescriptor;
+import org.apache.ambari.server.state.stack.WidgetLayout;
+import org.apache.ambari.server.state.stack.WidgetLayoutInfo;
 import org.apache.ambari.server.utils.VersionUtils;
 import org.apache.ambari.server.view.ViewArchiveUtility;
 import org.apache.ambari.server.view.configuration.ViewConfig;
@@ -84,9 +92,13 @@ import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Provider;
@@ -139,6 +151,8 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
     (AbstractUpgradeCatalog.class);
   private static final Map<String, UpgradeCatalog> upgradeCatalogMap =
     new HashMap<String, UpgradeCatalog>();
+
+  protected String ambariUpgradeConfigUpdatesFileName;
 
   @Inject
   public AbstractUpgradeCatalog(Injector injector) {
@@ -364,13 +378,12 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
   }
 
   public void addNewConfigurationsFromXml() throws AmbariException {
-    ConfigHelper configHelper = injector.getInstance(ConfigHelper.class);
-    AmbariManagementController controller = injector.getInstance(AmbariManagementController.class);
-
-    Clusters clusters = controller.getClusters();
+    Clusters clusters = injector.getInstance(Clusters.class);
     if (clusters == null) {
       return;
     }
+
+    ConfigHelper configHelper = injector.getInstance(ConfigHelper.class);
     Map<String, Cluster> clusterMap = clusters.getClusters();
 
     if (clusterMap != null && !clusterMap.isEmpty()) {
@@ -482,10 +495,8 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
                                                                 Set<String> toRemove,
                                                                 boolean updateIfExists,
                                                                 boolean createNewConfigType) throws AmbariException {
+    Clusters clusters = injector.getInstance(Clusters.class);
     ConfigHelper configHelper = injector.getInstance(ConfigHelper.class);
-    AmbariManagementController controller = injector.getInstance(AmbariManagementController.class);
-
-    Clusters clusters = controller.getClusters();
     if (clusters == null) {
       return;
     }
@@ -553,11 +564,22 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
           oldConfigProperties = oldConfig.getProperties();
         }
 
+        Multimap<ConfigUpdateType, Entry<String, String>> propertiesToLog = ArrayListMultimap.create();
+        String serviceName = cluster.getServiceByConfigType(configType);
+
         Map<String, String> mergedProperties =
-          mergeProperties(oldConfigProperties, properties, updateIfExists);
+          mergeProperties(oldConfigProperties, properties, updateIfExists, propertiesToLog);
 
         if (removePropertiesList != null) {
-          mergedProperties = removeProperties(mergedProperties, removePropertiesList);
+          mergedProperties = removeProperties(mergedProperties, removePropertiesList, propertiesToLog);
+        }
+
+        if (propertiesToLog.size() > 0) {
+          try {
+            configuration.wrtiteToAmbariUpgradeConfigUpdatesFile(propertiesToLog, configType, serviceName, ambariUpgradeConfigUpdatesFileName);
+          } catch(Exception e) {
+            LOG.error("Write to config updates file failed:", e);
+          }
         }
 
         if (!Maps.difference(oldConfigProperties, mergedProperties).areEqual()) {
@@ -642,26 +664,51 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
 
   private Map<String, String> mergeProperties(Map<String, String> originalProperties,
                                Map<String, String> newProperties,
-                               boolean updateIfExists) {
+                               boolean updateIfExists, Multimap<AbstractUpgradeCatalog.ConfigUpdateType, Entry<String, String>> propertiesToLog) {
 
     Map<String, String> properties = new HashMap<String, String>(originalProperties);
     for (Map.Entry<String, String> entry : newProperties.entrySet()) {
-      if (!properties.containsKey(entry.getKey()) || updateIfExists) {
+      if (!properties.containsKey(entry.getKey())) {
         properties.put(entry.getKey(), entry.getValue());
+        propertiesToLog.put(ConfigUpdateType.ADDED, entry);
+      }
+      if (updateIfExists)  {
+        properties.put(entry.getKey(), entry.getValue());
+        propertiesToLog.put(ConfigUpdateType.UPDATED, entry);
       }
     }
     return properties;
   }
 
-  private Map<String, String> removeProperties(Map<String, String> originalProperties, Set<String> removeList){
+  private Map<String, String> removeProperties(Map<String, String> originalProperties,
+                                               Set<String> removeList, Multimap<AbstractUpgradeCatalog.ConfigUpdateType, Entry<String, String>> propertiesToLog){
     Map<String, String> properties = new HashMap<String, String>();
     properties.putAll(originalProperties);
     for (String removeProperty: removeList){
       if (originalProperties.containsKey(removeProperty)){
         properties.remove(removeProperty);
+        propertiesToLog.put(ConfigUpdateType.REMOVED, new AbstractMap.SimpleEntry<String, String>(removeProperty, ""));
       }
     }
     return properties;
+  }
+
+  public enum ConfigUpdateType {
+    ADDED("Added"),
+    UPDATED("Updated"),
+    REMOVED("Removed");
+
+
+    private final String description;
+
+
+    private ConfigUpdateType(String description) {
+      this.description = description;
+    }
+
+    public String getDescription() {
+      return description;
+    }
   }
 
   /**
@@ -895,6 +942,11 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
   }
 
   @Override
+  public void setConfigUpdatesFileName(String ambariUpgradeConfigUpdatesFileName) {
+    this.ambariUpgradeConfigUpdatesFileName = ambariUpgradeConfigUpdatesFileName;
+  }
+
+  @Override
   public void upgradeData() throws AmbariException, SQLException {
     executeDMLUpdates();
     updateTezHistoryUrlBase();
@@ -1091,4 +1143,93 @@ public abstract class AbstractUpgradeCatalog implements UpgradeCatalog {
     return leafQueues;
   }
 
+  /**
+   *
+   * @param serviceName
+   * @param widgetMap
+   * @param sectionLayoutMap
+   * @throws AmbariException
+   */
+  protected void updateWidgetDefinitionsForService(String serviceName, Map<String, List<String>> widgetMap,
+                                                   Map<String, String> sectionLayoutMap) throws AmbariException {
+    AmbariManagementController ambariManagementController = injector.getInstance(AmbariManagementController.class);
+    AmbariMetaInfo ambariMetaInfo = injector.getInstance(AmbariMetaInfo.class);
+    Type widgetLayoutType = new TypeToken<Map<String, List<WidgetLayout>>>(){}.getType();
+    Gson gson = injector.getInstance(Gson.class);
+    WidgetDAO widgetDAO = injector.getInstance(WidgetDAO.class);
+
+    Clusters clusters = ambariManagementController.getClusters();
+
+    Map<String, Cluster> clusterMap = getCheckedClusterMap(clusters);
+    for (final Cluster cluster : clusterMap.values()) {
+      long clusterID = cluster.getClusterId();
+
+      StackId stackId = cluster.getDesiredStackVersion();
+      Map<String, Object> widgetDescriptor = null;
+      StackInfo stackInfo = ambariMetaInfo.getStack(stackId.getStackName(), stackId.getStackVersion());
+      ServiceInfo serviceInfo = stackInfo.getService(serviceName);
+      if (serviceInfo == null) {
+        LOG.info("Skipping updating widget definition, because " + serviceName +  " service is not present in cluster " +
+            "cluster_name= " + cluster.getClusterName());
+        continue;
+      }
+
+      for (String section : widgetMap.keySet()) {
+        List<String> widgets = widgetMap.get(section);
+        for (String widgetName : widgets) {
+          List<WidgetEntity> widgetEntities = widgetDAO.findByName(clusterID,
+              widgetName, "ambari", section);
+
+          if (widgetEntities != null && widgetEntities.size() > 0) {
+            WidgetEntity entityToUpdate = null;
+            if (widgetEntities.size() > 1) {
+              LOG.info("Found more that 1 entity with name = "+ widgetName +
+                  " for cluster = " + cluster.getClusterName() + ", skipping update.");
+            } else {
+              entityToUpdate = widgetEntities.iterator().next();
+            }
+            if (entityToUpdate != null) {
+              LOG.info("Updating widget: " + entityToUpdate.getWidgetName());
+              // Get the definition from widgets.json file
+              WidgetLayoutInfo targetWidgetLayoutInfo = null;
+              File widgetDescriptorFile = serviceInfo.getWidgetsDescriptorFile();
+              if (widgetDescriptorFile != null && widgetDescriptorFile.exists()) {
+                try {
+                  widgetDescriptor = gson.fromJson(new FileReader(widgetDescriptorFile), widgetLayoutType);
+                } catch (Exception ex) {
+                  String msg = "Error loading widgets from file: " + widgetDescriptorFile;
+                  LOG.error(msg, ex);
+                  widgetDescriptor = null;
+                }
+              }
+              if (widgetDescriptor != null) {
+                LOG.debug("Loaded widget descriptor: " + widgetDescriptor);
+                for (Object artifact : widgetDescriptor.values()) {
+                  List<WidgetLayout> widgetLayouts = (List<WidgetLayout>) artifact;
+                  for (WidgetLayout widgetLayout : widgetLayouts) {
+                    if (widgetLayout.getLayoutName().equals(sectionLayoutMap.get(section))) {
+                      for (WidgetLayoutInfo layoutInfo : widgetLayout.getWidgetLayoutInfoList()) {
+                        if (layoutInfo.getWidgetName().equals(widgetName)) {
+                          targetWidgetLayoutInfo = layoutInfo;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              if (targetWidgetLayoutInfo != null) {
+                entityToUpdate.setMetrics(gson.toJson(targetWidgetLayoutInfo.getMetricsInfo()));
+                entityToUpdate.setWidgetValues(gson.toJson(targetWidgetLayoutInfo.getValues()));
+                entityToUpdate.setDescription(targetWidgetLayoutInfo.getDescription());
+                widgetDAO.merge(entityToUpdate);
+              } else {
+                LOG.warn("Unable to find widget layout info for " + widgetName +
+                    " in the stack: " + stackId);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

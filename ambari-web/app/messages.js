@@ -55,6 +55,8 @@ Em.I18n.translations = {
   'app.settings.no.privileges': 'This user does not have any privileges.',
   'app.settings.clusterRole': 'Cluster Role',
   'app.settings.viewPermissions': 'View Permissions',
+  'app.goToView': 'Go To View',
+  'app.debugHiveQuery': 'Debug Hive Query',
 
   'app.aboutAmbari.getInvolved': 'Get involved!',
   'app.aboutAmbari.version': 'Version',
@@ -827,6 +829,7 @@ Em.I18n.translations = {
   'installer.step4.serviceCheck.popup.body':'You did not select {0}, but it is needed by other services you selected. We will automatically add {0}. Is this OK?',
   'installer.step4.limitedFunctionality.popup.header':'Limited Functionality Warning',
   'installer.step4.ambariMetricsCheck.popup.body':'Ambari Metrics collects metrics from the cluster and makes them available to Ambari.  If you do not install Ambari Metrics service, metrics will not be accessible from Ambari.  Are you sure you want to proceed without Ambari Metrics?',
+  'installer.step4.ambariInfraCheck.popup.body':'Since Ambari Infra is not selected, you must supply your own Solr to make Atlas work. Are you sure you want to proceed?',
   'installer.step4.smartSenseCheck.popup.body':'SmartSense securely collects cluster diagnostics in order to send you recommendations and automate analysis for ' +
   'troubleshooting support cases. If you choose not to install SmartSense, you will not receive any recommendations, and you ' +
   'will need to collect configuration and logs manually for troubleshooting support cases. ' +
@@ -1251,6 +1254,81 @@ Em.I18n.translations = {
   'admin.kerberos.disable.notice.completed': 'Services have been successfully tested without kerberos environment.',
   'admin.kerberos.wizard.step1.notice.inProgress': 'Please wait while cluster is being unkerberized',
 
+  'admin.manageJournalNode.label': 'Manage JournalNode',
+  'admin.manageJournalNode.wizard.header': 'Manage JournalNode Wizard',
+  'admin.manageJournalNode.wizard.step1.header': 'Assign JournalNodes',
+  'admin.manageJournalNode.wizard.step2.header': 'Review',
+  'admin.manageJournalNode.wizard.step3.header': 'Save Namespace',
+  'admin.manageJournalNode.wizard.step4.header': 'Add/Remove JournalNodes',
+  'admin.manageJournalNode.wizard.step5.header': 'Format JournalNodes',
+  'admin.manageJournalNode.wizard.step6.header': 'Start Active NameNode',
+  'admin.manageJournalNode.wizard.step7.header': 'BootStrap StandBy NameNode',
+  'admin.manageJournalNode.wizard.step8.header': 'Start All Services',
+
+  'admin.manageJournalNode.wizard.step1.body': 'Assign hosts to JournalNodes',
+  'admin.manageJournalNode.wizard.step3.confirm.config.body':'<div class="alert alert-info">' +
+  '<b>Review Configuration Changes.</b></br>' +
+  'The following lists the configuration changes that will be made by the Wizard to manage JournalNode. This information is for <b> review only </b>.' +
+  '</div>',
+
+  'admin.manageJournalNode.wizard.step4.task0.title' : 'Stop Standby NameNode',
+  'admin.manageJournalNode.wizard.step4.task1.title': 'Stop Services',
+  'admin.manageJournalNode.wizard.step4.task2.title': 'Add JournalNodes',
+  'admin.manageJournalNode.wizard.step4.task3.title': 'Delete JournalNodes',
+  'admin.manageJournalNode.wizard.step4.task4.title': 'Start JournalNodes',
+  'admin.manageJournalNode.wizard.step4.task5.title': 'Reconfigure HDFS',
+  'admin.manageJournalNode.wizard.step6.task0.title': 'Start Zookeeper Server',
+  'admin.manageJournalNode.wizard.step6.task1.title': 'Start Active NameNode',
+  'admin.manageJournalNode.wizard.step8.task0.title': 'Stop HDFS',
+  'admin.manageJournalNode.wizard.step8.task1.title': 'Start All Services',
+
+
+  'admin.manageJournalNode.wizard.step5.bodyHeader': 'Manual Steps Required: Format JournalNodes',
+  'admin.manageJournalNode.wizard.step7.bodyHeader': 'Manual Steps Required: BootStrap Standby NameNode',
+
+
+  'admin.manageJournalNode.step4.save.configuration.note' : 'This configuration is created by Manage JournalNode Wizard',
+
+  'admin.manageJournalNode.wizard.step8.notice.inProgress': 'Wait all services to be started',
+  'admin.manageJournalNode.wizard.progressPage.notice.inProgress': 'Please wait JournalNodes being deployed',
+  'admin.manageJournalNode.wizard.step6.notice.inProgress': 'Please wait for related services to be started',
+  'admin.manageJournalNode.wizard.step4.notice.inProgress': 'Please wait JournalNodes being deployed',
+  'admin.manageJournalNode.wizard.step8.notice.completed':'JournalNodes has been processed successfully.',
+
+  'admin.manageJournalNode.wizard.step3.body':
+  '<ol>' +
+  '<li>Login to the NameNode host <b>{1}</b>.</li>' +
+  '<li>Put the NameNode in Safe Mode (read-only mode):' +
+  '<div class="code-snippet">sudo su {0} -l -c \'hdfs dfsadmin -safemode enter\'</div></li>' +
+  '<li>Once in Safe Mode, create a Checkpoint:' +
+  '<div class="code-snippet">sudo su {0} -l -c \'hdfs dfsadmin -saveNamespace\'</div></li>' +
+  '<li>You will be able to proceed once Ambari detects that the NameNode is in Safe Mode and the Checkpoint has been created successfully.</li>'+
+  '<div class="alert alert-warn">If the <b>Next</b> button is enabled before you run the <b>"Step 3: Save Namespace"</b> command, it means there is a recent Checkpoint already and you may proceed without running the <b>"Step 3: Save Namespace"</b> command.</div>' +
+  '</ol>',
+
+  'admin.manageJournalNode.wizard.step5.body':
+  '<ol>' +
+  '<li>Login to the NameNode host <b>{1}</b>.</li>' +
+  '<li>Initialize the JournalNodes by running:' +
+  '<div class="code-snippet">sudo su {0} -l -c \'hdfs namenode -initializeSharedEdits\'</div></li>' +
+  '<li>You will be able to proceed once Ambari detects that the JournalNodes have been initialized successfully.</li>' +
+  '</ol>',
+
+  'admin.manageJournalNode.wizard.step7.body':
+  '<div class="alert alert-info">' +
+  '<ol start="3">' +
+  '<li>Login to the Additional NameNode host <b>{1}</b>.<br>' +
+  '<div class="alert alert-warn"><strong>Important!</strong> Be sure to login to the Additional NameNode host.<br>This is a different host from previous steps.</div>' +
+  '</li>' +
+  '<li>Initialize the metadata for the Additional NameNode by running:' +
+  '<div class="code-snippet">sudo su {0} -l -c \'hdfs namenode -bootstrapStandby\'</div></li>' +
+  '</ol>' +
+  '</div>' +
+  'Please proceed once you have completed the steps above.',
+
+
+
+
   'admin.highAvailability':' High Availability',
   'admin.highAvailability.button.enable':'Enable NameNode HA',
   'admin.highAvailability.button.disable':'Disable NameNode HA',
@@ -1314,19 +1392,21 @@ Em.I18n.translations = {
   'admin.highAvailability.wizard.step5.task4.title':'Start JournalNodes',
   'admin.highAvailability.wizard.step5.task5.title':'Disable Secondary NameNode',
 
-  'admin.highAvailability.wizard.step7.task0.title':'Start ZooKeeper Servers',
-  'admin.highAvailability.wizard.step7.task1.title':'Start NameNode',
+  'admin.highAvailability.wizard.step7.task0.title':'Start Ranger',
+  'admin.highAvailability.wizard.step7.task1.title':'Start ZooKeeper Servers',
+  'admin.highAvailability.wizard.step7.task2.title':'Start NameNode',
 
   'admin.highAvailability.wizard.step9.task0.title':'Start Additional NameNode',
   'admin.highAvailability.wizard.step9.task1.title':'Install Failover Controllers',
   'admin.highAvailability.wizard.step9.task2.title':'Start Failover Controllers',
   'admin.highAvailability.wizard.step9.task3.title':'Install PXF',
-  'admin.highAvailability.wizard.step9.task4.title':'Reconfigure HBase',
-  'admin.highAvailability.wizard.step9.task5.title':'Reconfigure Accumulo',
-  'admin.highAvailability.wizard.step9.task6.title':'Reconfigure HAWQ',
-  'admin.highAvailability.wizard.step9.task7.title':'Delete Secondary NameNode',
-  'admin.highAvailability.wizard.step9.task8.title':'Stop HDFS',
-  'admin.highAvailability.wizard.step9.task9.title':'Start All Services',
+  'admin.highAvailability.wizard.step9.task4.title':'Reconfigure Ranger',
+  'admin.highAvailability.wizard.step9.task5.title':'Reconfigure HBase',
+  'admin.highAvailability.wizard.step9.task6.title':'Reconfigure Accumulo',
+  'admin.highAvailability.wizard.step9.task7.title':'Reconfigure HAWQ',
+  'admin.highAvailability.wizard.step9.task8.title':'Delete Secondary NameNode',
+  'admin.highAvailability.wizard.step9.task9.title':'Stop HDFS',
+  'admin.highAvailability.wizard.step9.task10.title':'Start All Services',
   'admin.highAvailability.wizard.step9.notice.completed':'NameNode HA has been enabled successfully.',
 
   'admin.highAvailability.wizard.step3.curNameNode': '<b>Current NameNode:</b> ',
@@ -1621,6 +1701,7 @@ Em.I18n.translations = {
   'admin.stackVersions.version.upgrade.upgradeOptions.RU.title': "Rolling Upgrade",
   'admin.stackVersions.version.upgrade.upgradeOptions.RU.description': "Services remain running while the upgrade is performed. Minimized disruption but slower upgrade.",
   'admin.stackVersions.version.upgrade.upgradeOptions.EU.title': "Express Upgrade",
+  'admin.stackVersions.version.upgrade.upgradeOptions.HOU.title': "Host Ordered Upgrade",
   'admin.stackVersions.version.upgrade.upgradeOptions.EU.description': "Services are stopped while the upgrade is performed. Incurs downtime, but faster upgrade.",
   'admin.stackVersions.version.upgrade.upgradeOptions.errors_bypassed': "Bypassed errors,<br/>proceed at your own risk.",
   'admin.stackVersions.version.upgrade.upgradeOptions.preCheck.rerun':'Rerun Checks',
@@ -2503,6 +2584,7 @@ Em.I18n.translations = {
   'hosts.host.deleteComponent.popup.msg1':'Are you sure you want to delete {0}?',
   'hosts.host.deleteComponent.popup.deleteZooKeeperServer':'Deleting <i>ZooKeeper Server</i> may reconfigure such properties:<ul><li>zookeeper.connect</li><li>ha.zookeeper.quorum</li><li>hbase.zookeeper.quorum</li><li>templeton.zookeeper.hosts</li><li>yarn.resourcemanager.zk-address</li><li>hive.zookeeper.quorum</li><li>hive.cluster.delegation.token.store.zookeeper.connectString</li><li>storm.zookeeper.servers</li><li>instance.zookeeper.host</li></ul>',
   'hosts.host.deleteComponent.popup.deleteRangerKMSServer': 'Deleting <i>Ranger KMS Server</i> may reconfigure such properties:<ul><li>hadoop.security.key.provider.path</li><li>dfs.encryption.key.provider.uri</li>',
+  'hosts.host.deleteComponent.popup.deleteJournalNodeMsg': 'You are about to open <i>Manage Journal Node Wizard</i>. Are you sure?',
   'hosts.host.deleteComponent.popup.warning':'<b>WARNING!</b> Delete the last <i>{0}</i> component in the cluster?</br>Deleting the last component in the cluster could result in permanent loss of service data.',
   'hosts.host.deleteComponent.popup.confirm':'Confirm Delete',
   'hosts.host.installComponent.popup.confirm':'Confirm Install',
@@ -2538,6 +2620,7 @@ Em.I18n.translations = {
   'hosts.host.decommissioning':'Decommissioning',
   'hosts.host.addComponent.HIVE_METASTORE':'Adding <i>Hive Metastore</i> will reconfigure such properties:<ul><li>hive.metastore.uris</li><li>templeton.hive.properties</li></ul>',
   'hosts.host.addComponent.WEBHCAT_SERVER':'You are about to add <i>WebHCat Server</i>. Are you sure?',
+  'hosts.host.addComponent.JOURNALNODE': 'You are about to open <i>Manage Journal Node Wizard</i>. Are you sure?',
   'hosts.host.deleteComponent.popup.deleteHiveMetastore':'Deleting <i>Hive Metastore</i> will reconfigure such properties:<ul><li>hive.metastore.uris</li><li>templeton.hive.properties</li></ul>',
   'hosts.host.deleteComponent.popup.deleteWebHCatServer':'You are about to delete <i>WebHCat Server</i>. Are you sure?',
   'hosts.host.configs.save.note': 'This configuration is created by ambari while installing/deleting {0} component on a host',

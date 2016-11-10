@@ -29,6 +29,7 @@ App.HostComponent = DS.Model.extend({
   host: DS.belongsTo('App.Host'),
   componentLogs: DS.belongsTo('App.HostComponentLog'),
   hostName: DS.attr('string'),
+  publicHostName: DS.attr('string'),
   service: DS.belongsTo('App.Service'),
   adminState: DS.attr('string'),
 
@@ -320,6 +321,13 @@ App.HostComponentActionMap = {
         label: ctx.get('isPassive') ? Em.I18n.t('passiveState.turnOff') : Em.I18n.t('passiveState.turnOn'),
         cssClass: 'icon-medkit',
         disabled: false
+      },
+      MANAGE_JN: {
+        action: 'manageJournalNode',
+        label: Em.I18n.t('admin.manageJournalNode.label'),
+        cssClass: 'icon-cog',
+        isHidden: !App.get('supports.manageJournalNode') || !App.get('isHaEnabled')
+        || (App.router.get('mainHostController.totalCount') == 3 && App.HostComponent.find().filterProperty('componentName', 'JOURNALNODE').get('length') == 3)
       },
       TOGGLE_NN_HA: {
         action: App.get('isHaEnabled') ? 'disableHighAvailability' : 'enableHighAvailability',

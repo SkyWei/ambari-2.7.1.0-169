@@ -51,7 +51,7 @@ class TestWebHCatServer(RMFTestCase):
     self.assert_configure_default()
     self.assertResourceCalled('Execute', 'cd /var/run/webhcat ; /usr/hdp/current/hive-webhcat/sbin/webhcat_server.sh start',
         environment = {'HADOOP_HOME': '/usr/hdp/current/hadoop-client'},
-        not_if = "ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1'",
+        not_if = "ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1",
         user = 'hcat',
     )
     self.assertNoMoreResources()
@@ -70,15 +70,12 @@ class TestWebHCatServer(RMFTestCase):
                               environment = {'HADOOP_HOME': '/usr/hdp/current/hadoop-client' }
                               )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `ambari-sudo.sh su hcat -l -s /bin/bash -c \'[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid\'`',
-                              not_if = "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) || ( sleep 10 && ! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) )",
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/webhcat/webhcat.pid`',
+                              only_if = "ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1",
                               ignore_failures = True
     )
 
-    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1)",
-                              tries=20,
-                              try_sleep=3,
-    )
+    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1)")
 
     self.assertResourceCalled('File', '/var/run/webhcat/webhcat.pid',
         action = ['delete'],
@@ -113,15 +110,12 @@ class TestWebHCatServer(RMFTestCase):
         user = 'hcat',
     )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `ambari-sudo.sh su hcat -l -s /bin/bash -c \'[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid\'`',
-                              not_if = "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) || ( sleep 10 && ! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) )",
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/webhcat/webhcat.pid`',
+                              only_if = "ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1",
                               ignore_failures = True
                               )
 
-    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1)",
-                              tries=20,
-                              try_sleep=3,
-                              )
+    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1)")
 
     self.assertResourceCalled('File', '/var/run/webhcat/webhcat.pid',
                               action = ['delete'],
@@ -140,7 +134,7 @@ class TestWebHCatServer(RMFTestCase):
     self.assert_configure_secured()
     self.assertResourceCalled('Execute', 'cd /var/run/webhcat ; /usr/hdp/current/hive-webhcat/sbin/webhcat_server.sh start',
         environment = {'HADOOP_HOME': '/usr/hdp/current/hadoop-client'},
-        not_if = "ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1'",
+        not_if = "ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1",
         user = 'hcat',
     )
     self.assertNoMoreResources()
@@ -159,15 +153,12 @@ class TestWebHCatServer(RMFTestCase):
                               environment = {'HADOOP_HOME': '/usr/hdp/current/hadoop-client' }
                               )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `ambari-sudo.sh su hcat -l -s /bin/bash -c \'[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid\'`',
-                              not_if = "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) || ( sleep 10 && ! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) )",
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/webhcat/webhcat.pid`',
+                              only_if = "ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1",
                               ignore_failures = True
     )
 
-    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1)",
-                              tries=20,
-                              try_sleep=3,
-    )
+    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1)")
     self.assertResourceCalled('File', '/var/run/webhcat/webhcat.pid',
         action = ['delete'],
     )
@@ -189,15 +180,12 @@ class TestWebHCatServer(RMFTestCase):
         user = 'hcat',
     )
 
-    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `ambari-sudo.sh su hcat -l -s /bin/bash -c \'[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid\'`',
-                              not_if = "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) || ( sleep 10 && ! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1) )",
+    self.assertResourceCalled('Execute', 'ambari-sudo.sh kill -9 `cat /var/run/webhcat/webhcat.pid`',
+                              only_if = "ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1",
                               ignore_failures = True
                               )
 
-    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `ambari-sudo.sh su hcat -l -s /bin/bash -c '[RMF_EXPORT_PLACEHOLDER]cat /var/run/webhcat/webhcat.pid'` >/dev/null 2>&1)",
-                              tries=20,
-                              try_sleep=3,
-                              )
+    self.assertResourceCalled('Execute', "! (ls /var/run/webhcat/webhcat.pid >/dev/null 2>&1 && ps -p `cat /var/run/webhcat/webhcat.pid` >/dev/null 2>&1)")
     self.assertResourceCalled('File', '/var/run/webhcat/webhcat.pid',
                               action = ['delete'],
                               )

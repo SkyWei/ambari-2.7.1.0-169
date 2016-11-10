@@ -18,6 +18,8 @@
 
 package org.apache.ambari.server.upgrade;
 
+import javax.persistence.EntityManager;
+import junit.framework.Assert;
 import static org.easymock.EasyMock.anyObject;
 import static org.easymock.EasyMock.anyString;
 import static org.easymock.EasyMock.capture;
@@ -43,8 +45,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import javax.persistence.EntityManager;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.actionmanager.ActionManager;
@@ -79,8 +79,6 @@ import com.google.inject.Injector;
 import com.google.inject.Module;
 import com.google.inject.Provider;
 
-import junit.framework.Assert;
-
 /**
  * {@link UpgradeCatalog250} unit tests.
  */
@@ -95,7 +93,6 @@ public class UpgradeCatalog250Test {
     reset(entityManagerProvider);
     expect(entityManagerProvider.get()).andReturn(entityManager).anyTimes();
     replay(entityManagerProvider);
-
   }
 
   @After
@@ -131,6 +128,11 @@ public class UpgradeCatalog250Test {
       eq(UpgradeCatalog250.COMPONENT_VERSION_FK_REPO_VERSION), eq("repo_version_id"),
       eq("repo_version"), eq("repo_version_id"), eq(false));
 
+    // servicedesiredstate table
+    Capture<DBAccessor.DBColumnInfo> capturedCredentialStoreSupportedCol = newCapture();
+    Capture<DBAccessor.DBColumnInfo> capturedCredentialStoreEnabledCol = newCapture();
+    dbAccessor.addColumn(eq(UpgradeCatalog250.SERVICE_DESIRED_STATE_TABLE), capture(capturedCredentialStoreSupportedCol));
+    dbAccessor.addColumn(eq(UpgradeCatalog250.SERVICE_DESIRED_STATE_TABLE), capture(capturedCredentialStoreEnabledCol));
 
     expect(dbAccessor.getConnection()).andReturn(connection);
     expect(connection.createStatement()).andReturn(statement);
@@ -181,6 +183,25 @@ public class UpgradeCatalog250Test {
     // did we get them all?
     Assert.assertEquals(0, expected.size());
 
+    // Verify if credential_store_supported & credential_store_enabled columns
+    // were added to servicedesiredstate table
+    DBAccessor.DBColumnInfo capturedCredentialStoreSupportedColValues = capturedCredentialStoreSupportedCol.getValue();
+    Assert.assertNotNull(capturedCredentialStoreSupportedColValues);
+
+    Assert.assertEquals(UpgradeCatalog250.CREDENTIAL_STORE_SUPPORTED_COL, capturedCredentialStoreSupportedColValues.getName());
+    Assert.assertEquals(null, capturedCredentialStoreSupportedColValues.getLength());
+    Assert.assertEquals(Short.class, capturedCredentialStoreSupportedColValues.getType());
+    Assert.assertEquals(0, capturedCredentialStoreSupportedColValues.getDefaultValue());
+    Assert.assertEquals(false, capturedCredentialStoreSupportedColValues.isNullable());
+
+    DBAccessor.DBColumnInfo capturedCredentialStoreEnabledColValues = capturedCredentialStoreEnabledCol.getValue();
+    Assert.assertNotNull(capturedCredentialStoreEnabledColValues);
+
+    Assert.assertEquals(UpgradeCatalog250.CREDENTIAL_STORE_ENABLED_COL, capturedCredentialStoreEnabledColValues.getName());
+    Assert.assertEquals(null, capturedCredentialStoreEnabledColValues.getLength());
+    Assert.assertEquals(Short.class, capturedCredentialStoreEnabledColValues.getType());
+    Assert.assertEquals(0, capturedCredentialStoreEnabledColValues.getDefaultValue());
+    Assert.assertEquals(false, capturedCredentialStoreEnabledColValues.isNullable());
   }
 
   @Test
@@ -188,18 +209,20 @@ public class UpgradeCatalog250Test {
     Method updateAmsConfigs = UpgradeCatalog250.class.getDeclaredMethod("updateAMSConfigs");
     Method createRoleAuthorizations = UpgradeCatalog250.class.getDeclaredMethod("createRoleAuthorizations");
     Method updateKafkaConfigs = UpgradeCatalog250.class.getDeclaredMethod("updateKafkaConfigs");
+    Method addNewConfigurationsFromXml = AbstractUpgradeCatalog.class.getDeclaredMethod("addNewConfigurationsFromXml");
 
     UpgradeCatalog250 upgradeCatalog250 = createMockBuilder(UpgradeCatalog250.class)
       .addMockedMethod(updateAmsConfigs)
       .addMockedMethod(createRoleAuthorizations)
       .addMockedMethod(updateKafkaConfigs)
+      .addMockedMethod(addNewConfigurationsFromXml)
       .createMock();
 
 
     upgradeCatalog250.updateAMSConfigs();
     expectLastCall().once();
 
-    upgradeCatalog250.createRoleAuthorizations();
+    upgradeCatalog250.addNewConfigurationsFromXml();
     expectLastCall().once();
 
     upgradeCatalog250.updateKafkaConfigs();

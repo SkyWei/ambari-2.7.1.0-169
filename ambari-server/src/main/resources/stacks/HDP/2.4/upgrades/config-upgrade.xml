@@ -16,10 +16,8 @@
    limitations under the License.
 -->
 
-<upgrade-config-changes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-
+<upgrade-config-changes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="upgrade-config.xsd">
   <services>
-
     <service name="TEZ">
       <component name="TEZ_CLIENT">
         <changes>
@@ -48,16 +46,12 @@
           <!-- Add these configs if the cluster is Kerberized.
           Will only be written to the local file system if Atlas is present. -->
           <definition xsi:type="configure" id="hdp_2_5_0_0_add_sqoop_atlas_security_configs">
-            <condition type="cluster-env" key="security_enabled" value="true">
-              <type>sqoop-atlas-application.properties</type>
-              <key>atlas.jaas.KafkaClient.option.useTicketCache</key>
-              <value>true</value>
-            </condition>
-            <condition type="cluster-env" key="security_enabled" value="true">
-              <type>sqoop-atlas-application.properties</type>
-              <key>atlas.jaas.KafkaClient.option.renewTicket</key>
-              <value>true</value>
-            </condition>
+            <type>sqoop-atlas-application.properties</type>
+            <set key="atlas.jaas.KafkaClient.option.useTicketCache" value="true" 
+              if-type="cluster-env" if-key="security_enabled" if-value="true"/>
+
+            <set key="atlas.jaas.KafkaClient.option.renewTicket" value="true" 
+              if-type="cluster-env" if-key="security_enabled" if-value="true"/>          
           </definition>
         </changes>
       </component>
@@ -135,11 +129,9 @@
           </definition>
 
           <definition xsi:type="configure" id="hdp_2_5_0_0_set_external_solrCloud_flag">
-            <condition type="ranger-env" key="is_solrCloud_enabled" value="true">
-              <type>ranger-env</type>
-              <key>is_external_solrCloud_enabled</key>
-              <value>true</value>
-            </condition>
+            <type>ranger-env</type>            
+            <set key="is_external_solrCloud_enabled" value="true" 
+              if-type="ranger-env" if-key="is_solrCloud_enabled" if-value="true"/>
           </definition>
 
         </changes>
@@ -226,6 +218,11 @@
             <transfer operation="delete" delete-key="xasecure.audit.credential.provider.file" />
             <transfer operation="delete" delete-key="xasecure.audit.destination.db.batch.filespool.dir" />
           </definition>
+          <definition xsi:type="configure" id="hdp_2_5_0_0_add_protocol_compatibility">
+            <type>kafka-broker</type>
+            <set key="inter.broker.protocol.version" value="0.9.0.0" />
+            <set key="log.message.format.version" value="0.9.0.0" />
+          </definition>
         </changes>
       </component>
     </service>
@@ -251,7 +248,7 @@
             <transfer operation="delete" delete-key="xasecure.audit.destination.db.batch.filespool.dir" />
           </definition>
 
-          
+
           <definition xsi:type="configure" id="hdp_2_5_0_0_upgrade_storm_1.0">
             <type>storm-site</type>
             <replace key="_storm.thrift.nonsecure.transport" find="backtype.storm.security.auth.SimpleTransportPlugin"
@@ -290,6 +287,21 @@
           <definition xsi:type="configure" id="hdp_2_5_0_0_remove_storm_atlas_configs">
             <type>storm-site</type>
             <transfer operation="delete" delete-key="atlas.cluster.name" />
+          </definition>
+
+          <definition xsi:type="configure" id="increase_storm_zookeeper_timeouts"
+                      summary="Increase storm.zookeeper.session.timeout and storm.zookeeper.connection.timeout property">
+            <type>storm-site</type>
+            <set key="storm.zookeeper.session.timeout"
+                 value="30000"
+                 if-key="storm.zookeeper.session.timeout"
+                 if-type="storm-site"
+                 if-value="20000" />
+            <set key="storm.zookeeper.connection.timeout"
+                 value="30000"
+                 if-key="storm.zookeeper.connection.timeout"
+                 if-type="storm-site"
+                 if-value="15000" />
           </definition>
         </changes>
       </component>
@@ -339,6 +351,25 @@
         </changes>
       </component>
     </service>
-  </services>
 
+    <service name="SPARK">
+      <component name="SPARK_JOBHISTORYSERVER">
+        <changes>
+          <definition xsi:type="configure" id="hdp_2_5_0_0_spark_jobhistoryserver">
+            <type>spark-defaults</type>
+            <transfer operation="delete" delete-key="spark.yarn.max.executor.failures" />
+          </definition>
+        </changes>
+      </component>
+      <component name="SPARK_CLIENT">
+        <changes>
+          <definition xsi:type="configure" id="hdp_2_5_0_0_spark_client">
+            <type>spark-defaults</type>
+            <transfer operation="delete" delete-key="spark.yarn.max.executor.failures" />
+          </definition>
+        </changes>
+      </component>
+    </service>
+
+  </services>
 </upgrade-config-changes>

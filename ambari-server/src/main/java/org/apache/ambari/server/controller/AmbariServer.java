@@ -19,6 +19,9 @@
 package org.apache.ambari.server.controller;
 
 
+import javax.crypto.BadPaddingException;
+import javax.servlet.DispatcherType;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.Authenticator;
@@ -29,9 +32,6 @@ import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.logging.LogManager;
-
-import javax.crypto.BadPaddingException;
-import javax.servlet.DispatcherType;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.StateRecoveryManager;
@@ -120,6 +120,8 @@ import org.apache.ambari.server.view.AmbariViewsMDCLoggingFilter;
 import org.apache.ambari.server.view.ViewDirectoryWatcher;
 import org.apache.ambari.server.view.ViewRegistry;
 import org.apache.ambari.server.view.ViewThrottleFilter;
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.PropertyConfigurator;
 import org.apache.velocity.app.Velocity;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.SessionIdManager;
@@ -155,6 +157,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.google.inject.persist.Transactional;
 import com.sun.jersey.spi.container.servlet.ServletContainer;
+
 
 @Singleton
 public class AmbariServer {
@@ -299,6 +302,8 @@ public class AmbariServer {
     Server serverForAgent = new Server();
 
     setSystemProperties(configs);
+
+    runDatabaseConsistencyCheck();
 
     try {
       ClassPathXmlApplicationContext parentSpringAppContext =
@@ -489,6 +494,8 @@ public class AmbariServer {
       viewRegistry.readViewArchives();
       viewDirectoryWatcher.start();
 
+      enableLog4jMonitor(configsMap);
+
       handlerList.addHandler(root);
       server.setHandler(handlerList);
 
@@ -636,6 +643,41 @@ public class AmbariServer {
   }
 
   /**
+   * this method executes database consistency check if skip option was not added
+   */
+  protected void runDatabaseConsistencyCheck() throws Exception {
+    if (System.getProperty("skipDatabaseConsistencyCheck") == null) {
+      System.out.println("Database consistency check started");
+      Logger DB_CHECK_LOG = LoggerFactory.getLogger(DatabaseConsistencyCheckHelper.class);
+      try{
+        DatabaseConsistencyCheckHelper.runAllDBChecks();
+      } catch(Throwable e) {
+        System.out.println("Database consistency check: failed");
+        if (e instanceof AmbariException) {
+          DB_CHECK_LOG.error("Exception occurred during database check:", e);
+          System.out.println("Exception occurred during database check: " + e.getMessage());
+          e.printStackTrace();
+          throw (AmbariException)e;
+        } else {
+          DB_CHECK_LOG.error("Unexpected error, database check failed", e);
+          System.out.println("Unexpected error, database check failed: " + e.getMessage());
+          e.printStackTrace();
+          throw new Exception("Unexpected error, database check failed", e);
+        }
+      } finally {
+        if (DatabaseConsistencyCheckHelper.ifErrorsFound()) {
+          System.out.println("Database consistency check: failed");
+          System.exit(1);
+        } else if (DatabaseConsistencyCheckHelper.ifWarningsFound()) {
+          System.out.println("Database consistency check: warning");
+        } else {
+          System.out.println("Database consistency check: successful");
+        }
+      }
+    }
+  }
+
+  /**
    * installs bridge handler which redirects log entries from JUL to Slf4J
    */
   private void setupJulLogging() {
@@ -749,10 +791,11 @@ public class AmbariServer {
           EnumSet.of(DispatcherType.REQUEST));
 
       gzipFilter.setInitParameter("methods", "GET,POST,PUT,DELETE");
+      gzipFilter.setInitParameter("excludePathPatterns", ".*(\\.woff|\\.ttf|\\.woff2|\\.eot|\\.svg)");
       gzipFilter.setInitParameter("mimeTypes",
-          "text/html,text/plain,text/xml,text/css,application/x-javascript," +
-              "application/xml,application/x-www-form-urlencoded," +
-              "application/javascript,application/json");
+              "text/html,text/plain,text/xml,text/css,application/x-javascript," +
+                      "application/xml,application/x-www-form-urlencoded," +
+                      "application/javascript,application/json");
       gzipFilter.setInitParameter("minGzipSize", configs.getApiGzipMinSize());
     }
   }
@@ -855,7 +898,7 @@ public class AmbariServer {
         injector.getInstance(GroupDAO.class), injector.getInstance(PrincipalDAO.class),
         injector.getInstance(PermissionDAO.class), injector.getInstance(ResourceDAO.class));
     UserPrivilegeResourceProvider.init(injector.getInstance(UserDAO.class), injector.getInstance(ClusterDAO.class),
-        injector.getInstance(GroupDAO.class), injector.getInstance(ViewInstanceDAO.class), injector.getInstance(PrivilegeDAO.class));
+        injector.getInstance(GroupDAO.class), injector.getInstance(ViewInstanceDAO.class), injector.getInstance(Users.class));
     ClusterPrivilegeResourceProvider.init(injector.getInstance(ClusterDAO.class));
     AmbariPrivilegeResourceProvider.init(injector.getInstance(ClusterDAO.class));
     ActionManager.setTopologyManager(injector.getInstance(TopologyManager.class));
@@ -864,7 +907,7 @@ public class AmbariServer {
 
     BaseService.init(injector.getInstance(RequestAuditLogger.class));
 
-    RetryHelper.init(configs.getOperationsRetryAttempts());
+    RetryHelper.init(injector.getInstance(Clusters.class), configs.getOperationsRetryAttempts());
   }
 
   /**
@@ -897,6 +940,26 @@ public class AmbariServer {
       });
     } else {
       LOG.debug("Proxy authentication not specified");
+    }
+  }
+
+  /**
+   * To change log level without restart.
+   */
+  public static void enableLog4jMonitor(Map<String, String> configsMap){
+
+    String log4jpath = AmbariServer.class.getResource("/"+Configuration.AMBARI_LOG_FILE).toString();
+    String monitorDelay = configsMap.get(Configuration.LOG4JMONITOR_DELAY.getKey());
+    long monitorDelayLong = Configuration.LOG4JMONITOR_DELAY.getDefaultValue();
+
+    try{
+      log4jpath = log4jpath.replace("file:", "");
+      if(StringUtils.isNotBlank(monitorDelay)) {
+        monitorDelayLong = Long.parseLong(monitorDelay);
+      }
+      PropertyConfigurator.configureAndWatch(log4jpath,  monitorDelayLong);
+    }catch(Exception e){
+      LOG.error("Exception in setting log4j monitor delay of {} for {}", monitorDelay, log4jpath, e);
     }
   }
 

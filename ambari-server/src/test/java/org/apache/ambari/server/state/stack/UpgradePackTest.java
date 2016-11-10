@@ -22,6 +22,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -33,6 +35,7 @@ import java.util.Set;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
+import org.apache.ambari.server.stack.ModuleFileUnmarshaller;
 import org.apache.ambari.server.state.stack.UpgradePack.PrerequisiteCheckConfig;
 import org.apache.ambari.server.state.stack.UpgradePack.ProcessingComponent;
 import org.apache.ambari.server.state.stack.upgrade.ClusterGrouping;
@@ -40,6 +43,7 @@ import org.apache.ambari.server.state.stack.upgrade.ClusterGrouping.ExecuteStage
 import org.apache.ambari.server.state.stack.upgrade.ConfigureTask;
 import org.apache.ambari.server.state.stack.upgrade.Direction;
 import org.apache.ambari.server.state.stack.upgrade.Grouping;
+import org.apache.ambari.server.state.stack.upgrade.HostOrderGrouping;
 import org.apache.ambari.server.state.stack.upgrade.ParallelScheduler;
 import org.apache.ambari.server.state.stack.upgrade.RestartGrouping;
 import org.apache.ambari.server.state.stack.upgrade.RestartTask;
@@ -48,11 +52,16 @@ import org.apache.ambari.server.state.stack.upgrade.StopGrouping;
 import org.apache.ambari.server.state.stack.upgrade.Task;
 import org.apache.ambari.server.state.stack.upgrade.UpdateStackGrouping;
 import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.FileFilterUtils;
+import org.apache.commons.io.filefilter.IOFileFilter;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
@@ -67,6 +76,8 @@ public class UpgradePackTest {
   private Injector injector;
   private AmbariMetaInfo ambariMetaInfo;
 
+  private static final Logger LOG = LoggerFactory.getLogger(UpgradePackTest.class);
+
   @Before
   public void before() throws Exception {
     injector = Guice.createInjector(new InMemoryDefaultTestModule());
@@ -78,6 +89,58 @@ public class UpgradePackTest {
   @After
   public void teardown() {
     injector.getInstance(PersistService.class).stop();
+  }
+
+  @Test
+  public void findAndValidateUpgradePacks() throws Exception {
+
+    IOFileFilter filter = new IOFileFilter() {
+      @Override
+      public boolean accept(File dir, String name) {
+        return false;
+      }
+
+      @Override
+      public boolean accept(File file) {
+        // file has the folder named 'upgrades', ends with '.xml' and is NOT 'config-upgrade.xml'
+        if (file.getAbsolutePath().contains("upgrades") &&
+            file.getAbsolutePath().endsWith(".xml") &&
+            !file.getAbsolutePath().contains("config-upgrade.xml")) {
+
+          return true;
+        }
+
+        return false;
+      }
+    };
+
+    List<File> files = new ArrayList<>();
+
+    files.addAll(FileUtils.listFiles(new File("src/main/resources/stacks"), filter,
+      FileFilterUtils.directoryFileFilter()));
+
+    files.addAll(FileUtils.listFiles(new File("src/test/resources/stacks"), filter,
+        FileFilterUtils.directoryFileFilter()));
+
+    files.addAll(FileUtils.listFiles(new File("src/test/resources/stacks_with_upgrade_cycle"), filter,
+        FileFilterUtils.directoryFileFilter()));
+
+    ModuleFileUnmarshaller unmarshaller = new ModuleFileUnmarshaller();
+
+    for (File file : files) {
+      String fileContent = FileUtils.readFileToString(file, "UTF-8");
+
+      // these things must be in upgrade packs for them to work anyway
+      if (fileContent.contains("<upgrade") && fileContent.contains("xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"")) {
+        if (!fileContent.contains("xsi:noNamespaceSchemaLocation=\"upgrade-pack.xsd\"")) {
+          String msg = String.format("File %s appears to be an upgrade pack, but does not define 'upgrade-pack.xsd' as its schema",
+              file.getAbsolutePath());
+          Assert.fail(msg);
+        } else {
+          unmarshaller.unmarshal(UpgradePack.class, file, true);
+        }
+      }
+    }
   }
 
   @Test
@@ -508,6 +571,21 @@ public class UpgradePackTest {
     Map<String, Map<String, ProcessingComponent>> tasks = upgradePack.getTasks();
     assertTrue(tasks.containsKey("HBASE"));
   }
+
+
+  @Test
+  public void testPackWithHostGroup() {
+    Map<String, UpgradePack> upgrades = ambariMetaInfo.getUpgradePacks("HDP", "2.2.0");
+    UpgradePack upgradePack = upgrades.get("upgrade_test_host_ordered");
+
+    assertNotNull(upgradePack);
+    assertEquals(upgradePack.getType(), UpgradeType.HOST_ORDERED);
+    assertEquals(3, upgradePack.getAllGroups().size());
+
+    assertEquals(HostOrderGrouping.class, upgradePack.getAllGroups().get(0).getClass());
+    assertEquals(Grouping.class, upgradePack.getAllGroups().get(1).getClass());
+  }
+
 
   private int indexOf(Map<String, ?> map, String keyToFind) {
     int result = -1;

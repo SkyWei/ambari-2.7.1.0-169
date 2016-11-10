@@ -68,6 +68,7 @@ App.enableDigitalClock = false;
 App.enableExperimental = false;
 
 App.supports = {
+  disableHostCheckOnAddHostWizard: false,
   preUpgradeCheck: true,
   displayOlderVersions: false,
   autoRollbackHA: false,
@@ -87,7 +88,9 @@ App.supports = {
   enableIpa: false,
   addingNewRepository: false,
   kerberosStackAdvisor: true,
-  logCountVizualization: false
+  logCountVizualization: false,
+  enabledWizardForHostOrderedUpgrade: true,
+  manageJournalNode: true
 };
 
 if (App.enableExperimental) {

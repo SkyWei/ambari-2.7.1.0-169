@@ -54,7 +54,6 @@ import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentFactory;
 import org.apache.ambari.server.state.ServiceComponentHost;
-import org.apache.ambari.server.state.ServiceFactory;
 import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.state.ServiceOsSpecific;
 import org.apache.ambari.server.state.State;
@@ -550,13 +549,6 @@ public interface AmbariManagementController {
   AmbariMetaInfo getAmbariMetaInfo();
 
   /**
-   * Get the service factory for this management controller.
-   *
-   * @return the service factory
-   */
-  ServiceFactory getServiceFactory();
-
-  /**
    * Get the service component factory for this management controller.
    *
    * @return the service component factory
@@ -692,6 +684,17 @@ public interface AmbariManagementController {
    * Getter for the url of MySQL JDBC driver, stored at server resources folder
    */
   String getMysqljdbcUrl();
+
+  /**
+   * Filters hosts to only select healthy ones that are heartbeating.
+   * <p/>
+   * The host's {@link HostState} is used to determine if a host is healthy.
+   *
+   * @return a List of healthy hosts, or an empty List if none exist.
+   * @throws AmbariException
+   * @see {@link HostState#HEALTHY}
+   */
+  List<String> selectHealthyHosts(Set<String> hostList) throws AmbariException;
 
   /**
    * Chooses a healthy host from the list of candidate hosts randomly. If there

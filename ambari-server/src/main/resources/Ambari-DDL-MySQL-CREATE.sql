@@ -36,8 +36,8 @@ CREATE TABLE stack(
 
 CREATE TABLE extension(
   extension_id BIGINT NOT NULL,
-  extension_name VARCHAR(255) NOT NULL,
-  extension_version VARCHAR(255) NOT NULL,
+  extension_name VARCHAR(100) NOT NULL,
+  extension_version VARCHAR(100) NOT NULL,
   CONSTRAINT PK_extension PRIMARY KEY (extension_id),
   CONSTRAINT UQ_extension UNIQUE (extension_name, extension_version));
 
@@ -259,6 +259,8 @@ CREATE TABLE servicedesiredstate (
   service_name VARCHAR(255) NOT NULL,
   maintenance_state VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
   security_state VARCHAR(32) NOT NULL DEFAULT 'UNSECURED',
+  credential_store_supported SMALLINT NOT NULL DEFAULT 0,
+  credential_store_enabled SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT PK_servicedesiredstate PRIMARY KEY (cluster_id, service_name),
   CONSTRAINT FK_sds_desired_stack_id FOREIGN KEY (desired_stack_id) REFERENCES stack(stack_id),
   CONSTRAINT servicedesiredstateservicename FOREIGN KEY (service_name, cluster_id) REFERENCES clusterservices (service_name, cluster_id));
@@ -279,8 +281,8 @@ CREATE TABLE users (
   principal_id BIGINT NOT NULL,
   create_time TIMESTAMP DEFAULT NOW(),
   ldap_user INTEGER NOT NULL DEFAULT 0,
-  user_type VARCHAR(255) NOT NULL DEFAULT 'LOCAL',
-  user_name VARCHAR(255) NOT NULL,
+  user_type VARCHAR(100) NOT NULL DEFAULT 'LOCAL',
+  user_name VARCHAR(100) NOT NULL,
   user_password VARCHAR(255),
   active INTEGER NOT NULL DEFAULT 1,
   active_widget_layouts VARCHAR(1024) DEFAULT NULL,
@@ -356,6 +358,7 @@ CREATE TABLE stage (
   cluster_host_info LONGBLOB,
   command_params LONGBLOB,
   host_params LONGBLOB,
+  command_execution_type VARCHAR(32) NOT NULL DEFAULT 'STAGE',
   CONSTRAINT PK_stage PRIMARY KEY (stage_id, request_id),
   CONSTRAINT FK_stage_request_id FOREIGN KEY (request_id) REFERENCES request (request_id));
 
@@ -368,13 +371,13 @@ CREATE TABLE host_role_command (
   host_id BIGINT,
   last_attempt_time BIGINT NOT NULL,
   request_id BIGINT NOT NULL,
-  role VARCHAR(255),
+  role VARCHAR(100),
   role_command VARCHAR(255),
   stage_id BIGINT NOT NULL,
   start_time BIGINT NOT NULL,
   original_start_time BIGINT NOT NULL,
   end_time BIGINT,
-  status VARCHAR(255),
+  status VARCHAR(100),
   auto_skip_on_failure SMALLINT DEFAULT 0 NOT NULL,
   std_error LONGBLOB,
   std_out LONGBLOB,
@@ -1122,20 +1125,10 @@ INSERT INTO adminresource (resource_id, resource_type_id) VALUES
 INSERT INTO adminprincipaltype (principal_type_id, principal_type_name) VALUES
   (1, 'USER'),
   (2, 'GROUP'),
-  (3, 'ALL.CLUSTER.ADMINISTRATOR'),
-  (4, 'ALL.CLUSTER.OPERATOR'),
-  (5, 'ALL.CLUSTER.USER'),
-  (6, 'ALL.SERVICE.ADMINISTRATOR'),
-  (7, 'ALL.SERVICE.OPERATOR'),
   (8, 'ROLE');
 
 INSERT INTO adminprincipal (principal_id, principal_type_id) VALUES
   (1, 1),
-  (2, 3),
-  (3, 4),
-  (4, 5),
-  (5, 6),
-  (6, 7),
   (7, 8),
   (8, 8),
   (9, 8),

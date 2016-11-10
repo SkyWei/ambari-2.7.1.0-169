@@ -18,10 +18,24 @@
 
 package org.apache.ambari.server.controller;
 
-import com.google.inject.AbstractModule;
-import com.google.inject.Guice;
-import com.google.inject.Injector;
-import junit.framework.Assert;
+import java.io.File;
+import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import javax.persistence.EntityManager;
+
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.Role;
 import org.apache.ambari.server.actionmanager.ActionManager;
@@ -37,16 +51,19 @@ import org.apache.ambari.server.audit.AuditLogger;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.controller.internal.RequestStageContainer;
 import org.apache.ambari.server.controller.spi.ClusterController;
+import org.apache.ambari.server.controller.utilities.KerberosChecker;
 import org.apache.ambari.server.metadata.RoleCommandOrder;
 import org.apache.ambari.server.orm.DBAccessor;
 import org.apache.ambari.server.orm.dao.ArtifactDAO;
 import org.apache.ambari.server.orm.dao.HostRoleCommandDAO;
+import org.apache.ambari.server.orm.dao.KerberosPrincipalDAO;
 import org.apache.ambari.server.security.SecurityHelper;
 import org.apache.ambari.server.security.credential.PrincipalKeyCredential;
 import org.apache.ambari.server.security.encryption.CredentialStoreService;
 import org.apache.ambari.server.security.encryption.CredentialStoreServiceImpl;
 import org.apache.ambari.server.security.encryption.CredentialStoreType;
 import org.apache.ambari.server.serveraction.ActionLog;
+import org.apache.ambari.server.serveraction.kerberos.ConfigureAmbariIdentitiesServerAction;
 import org.apache.ambari.server.serveraction.kerberos.CreateKeytabFilesServerAction;
 import org.apache.ambari.server.serveraction.kerberos.CreatePrincipalsServerAction;
 import org.apache.ambari.server.serveraction.kerberos.KDCType;
@@ -58,7 +75,6 @@ import org.apache.ambari.server.serveraction.kerberos.KerberosOperationHandler;
 import org.apache.ambari.server.serveraction.kerberos.KerberosOperationHandlerFactory;
 import org.apache.ambari.server.stack.StackManagerFactory;
 import org.apache.ambari.server.stageplanner.RoleGraphFactory;
-import org.apache.ambari.server.stageplanner.RoleGraphFactoryImpl;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -73,7 +89,6 @@ import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.State;
 import org.apache.ambari.server.state.cluster.ClusterFactory;
-import org.apache.ambari.server.state.cluster.ClustersImpl;
 import org.apache.ambari.server.state.host.HostFactory;
 import org.apache.ambari.server.state.kerberos.KerberosComponentDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosConfigurationDescriptor;
@@ -93,27 +108,20 @@ import org.easymock.CaptureType;
 import org.easymock.EasyMockSupport;
 import org.easymock.IAnswer;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
-import javax.persistence.EntityManager;
-import java.net.InetAddress;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import com.google.inject.AbstractModule;
+import com.google.inject.Guice;
+import com.google.inject.Injector;
+import com.google.inject.assistedinject.FactoryModuleBuilder;
 
 import static org.easymock.EasyMock.anyLong;
 import static org.easymock.EasyMock.anyObject;
+import static org.easymock.EasyMock.anyString;
 import static org.easymock.EasyMock.capture;
 import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
@@ -129,6 +137,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+
 @SuppressWarnings("unchecked")
 public class KerberosHelperTest extends EasyMockSupport {
 
@@ -139,6 +148,9 @@ public class KerberosHelperTest extends EasyMockSupport {
   private final AmbariMetaInfo metaInfo = createMock(AmbariMetaInfo.class);
   private final TopologyManager topologyManager = createMock(TopologyManager.class);
   private final Configuration configuration = createMock(Configuration.class);
+
+  @Rule
+  public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
   @Before
   public void setUp() throws Exception {
@@ -184,8 +196,21 @@ public class KerberosHelperTest extends EasyMockSupport {
           public boolean removePrincipal(String principal) throws KerberosOperationException {
             return false;
           }
+
+          @Override
+          public boolean createKeytabFile(Keytab keytab, File destinationKeytabFile) throws KerberosOperationException {
+            return true;
+          }
         })
         .anyTimes();
+
+    Method methodGetConfiguredTemporaryDirectory = KerberosHelperImpl.class.getDeclaredMethod("getConfiguredTemporaryDirectory");
+
+    final KerberosHelperImpl kerberosHelper = createMockBuilder(KerberosHelperImpl.class)
+        .addMockedMethod(methodGetConfiguredTemporaryDirectory)
+        .createMock();
+
+    expect(kerberosHelper.getConfiguredTemporaryDirectory()).andReturn(temporaryFolder.getRoot()).anyTimes();
 
     injector = Guice.createInjector(new AbstractModule() {
 
@@ -203,22 +228,26 @@ public class KerberosHelperTest extends EasyMockSupport {
         bind(ActionManager.class).toInstance(createNiceMock(ActionManager.class));
         bind(RequestFactory.class).toInstance(createNiceMock(RequestFactory.class));
         bind(StageFactory.class).toInstance(createNiceMock(StageFactory.class));
-        bind(RoleGraphFactory.class).to(RoleGraphFactoryImpl.class);
-        bind(Clusters.class).toInstance(createNiceMock(ClustersImpl.class));
+        bind(Clusters.class).toInstance(createNiceMock(Clusters.class));
+        install(new FactoryModuleBuilder().build(RoleGraphFactory.class));
         bind(ConfigHelper.class).toInstance(createNiceMock(ConfigHelper.class));
         bind(KerberosOperationHandlerFactory.class).toInstance(kerberosOperationHandlerFactory);
         bind(ClusterController.class).toInstance(clusterController);
         bind(KerberosDescriptorFactory.class).toInstance(kerberosDescriptorFactory);
         bind(KerberosConfigDataFileWriterFactory.class).toInstance(kerberosConfigDataFileWriterFactory);
         bind(StackManagerFactory.class).toInstance(createNiceMock(StackManagerFactory.class));
-        bind(KerberosHelper.class).to(KerberosHelperImpl.class);
+        bind(KerberosHelper.class).toInstance(kerberosHelper);
         bind(CredentialStoreService.class).to(CredentialStoreServiceImpl.class);
         bind(CreatePrincipalsServerAction.class).toInstance(createMock(CreatePrincipalsServerAction.class));
         bind(CreateKeytabFilesServerAction.class).toInstance(createMock(CreateKeytabFilesServerAction.class));
+        bind(ConfigureAmbariIdentitiesServerAction.class).toInstance(createMock(ConfigureAmbariIdentitiesServerAction.class));
         bind(StackAdvisorHelper.class).toInstance(createMock(StackAdvisorHelper.class));
         bind(HostRoleCommandDAO.class).toInstance(createNiceMock(HostRoleCommandDAO.class));
         bind(AuditLogger.class).toInstance(createNiceMock(AuditLogger.class));
         bind(ArtifactDAO.class).toInstance(createNiceMock(ArtifactDAO.class));
+        bind(KerberosPrincipalDAO.class).toInstance(createNiceMock(KerberosPrincipalDAO.class));
+
+        requestStaticInjection(KerberosChecker.class);
       }
     });
 
@@ -226,10 +255,11 @@ public class KerberosHelperTest extends EasyMockSupport {
     StageUtils.setTopologyManager(topologyManager);
     expect(topologyManager.getPendingHostComponents()).andReturn(
         Collections.<String, Collection<String>>emptyMap()).anyTimes();
-    
+
     StageUtils.setConfiguration(configuration);
     expect(configuration.getApiSSLAuthentication()).andReturn(false).anyTimes();
     expect(configuration.getClientApiPort()).andReturn(8080).anyTimes();
+    expect(configuration.getServerTempDir()).andReturn(temporaryFolder.getRoot().getAbsolutePath()).anyTimes();
 
     CredentialStoreService credentialStoreService = injector.getInstance(CredentialStoreService.class);
     if (!credentialStoreService.isInitialized(CredentialStoreType.TEMPORARY)) {
@@ -1008,7 +1038,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     final Config krb5ConfConfig = createMock(Config.class);
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
-    final Cluster cluster = createMockCluster(Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -1199,7 +1229,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     final Config krb5ConfConfig = createMock(Config.class);
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
-    final Cluster cluster = createMockCluster(Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -1385,7 +1415,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     final Config krb5ConfConfig = createMock(Config.class);
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
-    final Cluster cluster = createMockCluster(Collections.singleton(host), SecurityType.NONE, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", Collections.singleton(host), SecurityType.NONE, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -1581,7 +1611,7 @@ public class KerberosHelperTest extends EasyMockSupport {
         ? Arrays.asList(host, hostInvalid)
         : Collections.singleton(host);
 
-    final Cluster cluster = createMockCluster(hosts, SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", hosts, SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -2158,7 +2188,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     setupKerberosDescriptor(kerberosDescriptor, 2);
 
     RecommendationResponse.BlueprintConfigurations coreSiteRecommendation = createNiceMock(RecommendationResponse
-      .BlueprintConfigurations.class);
+        .BlueprintConfigurations.class);
     expect(coreSiteRecommendation.getProperties()).andReturn(Collections.singletonMap("newPropertyRecommendation", "newPropertyRecommendation"));
 
     RecommendationResponse.BlueprintConfigurations newTypeRecommendation = createNiceMock(RecommendationResponse.BlueprintConfigurations.class);
@@ -2249,7 +2279,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     serviceComponentHostMap.put("COMPONENT2B", new HashSet<String>(Arrays.asList("hostB", "hostC")));
     serviceComponentHostMap.put("COMPONEN3A", Collections.singleton("hostA"));
 
-    final Cluster cluster = createMockCluster(hosts, SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", hosts, SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices()).andReturn(services).anyTimes();
     expect(cluster.getServiceComponentHostMap(anyObject(Set.class), anyObject(Set.class))).andReturn(serviceComponentHostMap).anyTimes();
 
@@ -2287,7 +2317,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     // Needed by infrastructure
     injector.getInstance(AmbariMetaInfo.class).init();
 
-    HashMap<String,Set<String>> installedServices1 = new HashMap<String, Set<String>>();
+    HashMap<String, Set<String>> installedServices1 = new HashMap<String, Set<String>>();
     installedServices1.put("SERVICE1", new HashSet<String>(Arrays.asList("COMPONENT1A", "COMPONENT1B")));
     installedServices1.put("SERVICE2", new HashSet<String>(Arrays.asList("COMPONENT2A", "COMPONENT2B")));
     installedServices1.put("SERVICE3", Collections.singleton("COMPONENT3A"));
@@ -2295,7 +2325,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     Map<String, Map<String, String>> updates1 = kerberosHelper.getServiceConfigurationUpdates(
         cluster, existingConfigurations, installedServices1, null, null, true, true);
 
-    HashMap<String,Set<String>> installedServices2 = new HashMap<String, Set<String>>();
+    HashMap<String, Set<String>> installedServices2 = new HashMap<String, Set<String>>();
     installedServices2.put("SERVICE1", new HashSet<String>(Arrays.asList("COMPONENT1A", "COMPONENT1B")));
     installedServices2.put("SERVICE3", Collections.singleton("COMPONENT3A"));
 
@@ -2381,7 +2411,7 @@ public class KerberosHelperTest extends EasyMockSupport {
             put("realm", "FOOBAR.COM");
             put("case_insensitive_username_rules", "false");
             put("create_ambari_principal", "false");
-        }
+          }
         });
         put("", new HashMap<String, String>() {
           {
@@ -2414,18 +2444,51 @@ public class KerberosHelperTest extends EasyMockSupport {
 
   @Test
   public void testEnsureHeadlessIdentities() throws Exception {
+    testEnsureHeadlessIdentities(false, false);
+  }
+
+  @Test
+  public void testEnsureHeadlessAndAmbariIdentitiesAsUser() throws Exception {
+    testEnsureHeadlessIdentities(true, false);
+  }
+
+  @Test
+  public void testEnsureHeadlessAndAmbariIdentitiesAsService() throws Exception {
+    testEnsureHeadlessIdentities(true, true);
+  }
+
+  private void testEnsureHeadlessIdentities(boolean createAmbariIdentities, boolean ambariServerPrincipalAsService) throws Exception {
+    String clusterName = "c1";
+    String realm = "EXAMPLE.COM";
+    String ambariServerHostname = StageUtils.getHostName();
+    String ambariServerPrincipalName;
+    String ambariServerKeytabFilePath = new File("ambari.server.keytab").getAbsolutePath();
+    KerberosPrincipalType ambariServerPrincipalType;
+    String ambariServerPrincipalNameExpected;
+
+    if(ambariServerPrincipalAsService) {
+      ambariServerPrincipalName = "ambari-server-${cluster_name}/_HOST@${realm}";
+      ambariServerPrincipalType = KerberosPrincipalType.SERVICE;
+      ambariServerPrincipalNameExpected = String.format("ambari-server-%s/%s@%s", clusterName, ambariServerHostname, realm);
+    }
+    else {
+      ambariServerPrincipalName = "ambari-server-${cluster_name}@${realm}";
+      ambariServerPrincipalType = KerberosPrincipalType.USER;
+      ambariServerPrincipalNameExpected = String.format("ambari-server-%s@%s", clusterName, realm);
+    }
+
     Map<String, String> propertiesKrb5Conf = new HashMap<String, String>();
 
     Map<String, String> propertiesKerberosEnv = new HashMap<String, String>();
-    propertiesKerberosEnv.put("realm", "EXAMPLE.COM");
+    propertiesKerberosEnv.put("realm", realm);
     propertiesKerberosEnv.put("kdc_type", "mit-kdc");
     propertiesKerberosEnv.put("password_length", "20");
     propertiesKerberosEnv.put("password_min_lowercase_letters", "1");
     propertiesKerberosEnv.put("password_min_uppercase_letters", "1");
     propertiesKerberosEnv.put("password_min_digits", "1");
     propertiesKerberosEnv.put("password_min_punctuation", "0");
-    propertiesKerberosEnv.put("password_min_whitespace","0");
-    propertiesKerberosEnv.put("create_ambari_principal", "false");
+    propertiesKerberosEnv.put("password_min_whitespace", "0");
+    propertiesKerberosEnv.put("create_ambari_principal", (createAmbariIdentities) ? "true" : "false");
 
     Config configKrb5Conf = createMock(Config.class);
     expect(configKrb5Conf.getProperties()).andReturn(propertiesKrb5Conf).times(1);
@@ -2456,7 +2519,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     servicesMap.put("SERVICE1", service1);
     servicesMap.put("SERVICE2", service2);
 
-    Cluster cluster = createMockCluster(Arrays.asList(host1, host2, host3), SecurityType.KERBEROS, configKrb5Conf, configKerberosEnv);
+    Cluster cluster = createMockCluster(clusterName, Arrays.asList(host1, host2, host3), SecurityType.KERBEROS, configKrb5Conf, configKerberosEnv);
     expect(cluster.getServices()).andReturn(servicesMap).times(1);
 
     Map<String, String> kerberosDescriptorProperties = new HashMap<String, String>();
@@ -2515,6 +2578,44 @@ public class KerberosHelperTest extends EasyMockSupport {
     expect(kerberosDescriptor.getService("SERVICE1")).andReturn(service1KerberosDescriptor).times(1);
     expect(kerberosDescriptor.getService("SERVICE2")).andReturn(service2KerberosDescriptor).times(1);
 
+    if (createAmbariIdentities) {
+      String spnegoPrincipalNameExpected = String.format("HTTP/%s@%s", ambariServerHostname, realm);
+
+      ArrayList<KerberosIdentityDescriptor> ambarServerComponent1Identities = new ArrayList<KerberosIdentityDescriptor>();
+      ambarServerComponent1Identities.add(createMockIdentityDescriptor(
+          KerberosHelper.AMBARI_SERVER_KERBEROS_IDENTITY_NAME,
+          createMockPrincipalDescriptor(ambariServerPrincipalName, ambariServerPrincipalType, "ambari", null),
+          createMockKeytabDescriptor(ambariServerKeytabFilePath, null)));
+
+      ambarServerComponent1Identities.add(createMockIdentityDescriptor(
+          "spnego",
+          createMockPrincipalDescriptor("HTTP/_HOST@${realm}", KerberosPrincipalType.SERVICE, null, null),
+          createMockKeytabDescriptor("spnego.service.keytab", null)));
+
+      KerberosComponentDescriptor ambariServerComponentKerberosDescriptor = createMockComponentDescriptor("AMBARI_SERVER", ambarServerComponent1Identities, null);
+
+      HashMap<String, KerberosComponentDescriptor> ambariServerComponentDescriptorMap = new HashMap<String, KerberosComponentDescriptor>();
+      ambariServerComponentDescriptorMap.put("AMBARI_SERVER", ambariServerComponentKerberosDescriptor);
+
+      KerberosServiceDescriptor ambariServiceKerberosDescriptor = createMockServiceDescriptor("AMBARI", ambariServerComponentDescriptorMap, null);
+      expect(ambariServiceKerberosDescriptor.getComponent("AMBARI_SERVER")).andReturn(ambariServerComponentKerberosDescriptor).once();
+
+      expect(kerberosDescriptor.getService("AMBARI")).andReturn(ambariServiceKerberosDescriptor).once();
+
+      ConfigureAmbariIdentitiesServerAction configureAmbariIdentitiesServerAction = injector.getInstance(ConfigureAmbariIdentitiesServerAction.class);
+      expect(configureAmbariIdentitiesServerAction.installAmbariServerIdentity(eq(ambariServerPrincipalNameExpected), anyString(), eq(ambariServerKeytabFilePath),
+          eq("user1"), eq(true), eq(true), eq("groupA"), eq(true), eq(false), (ActionLog) eq(null)))
+          .andReturn(true)
+          .once();
+      expect(configureAmbariIdentitiesServerAction.installAmbariServerIdentity(eq(spnegoPrincipalNameExpected), anyString(), eq("spnego.service.keytab"),
+          eq("user1"), eq(true), eq(true), eq("groupA"), eq(true), eq(false), (ActionLog) eq(null)))
+          .andReturn(true)
+          .once();
+
+      configureAmbariIdentitiesServerAction.configureJAAS(ambariServerPrincipalNameExpected, ambariServerKeytabFilePath, null);
+      expectLastCall().once();
+    }
+
     setupKerberosDescriptor(kerberosDescriptor, 1);
 
     Map<String, Map<String, String>> existingConfigurations = new HashMap<String, Map<String, String>>();
@@ -2531,15 +2632,30 @@ public class KerberosHelperTest extends EasyMockSupport {
     Capture<? extends String> capturePrincipalForKeytab = newCapture(CaptureType.ALL);
 
     CreatePrincipalsServerAction createPrincipalsServerAction = injector.getInstance(CreatePrincipalsServerAction.class);
-    expect(createPrincipalsServerAction.createPrincipal(capture(capturePrincipal), eq(false), anyObject(Map.class),  anyObject(KerberosOperationHandler.class), eq(false), isNull(ActionLog.class)))
+    expect(createPrincipalsServerAction.createPrincipal(capture(capturePrincipal), eq(false), anyObject(Map.class), anyObject(KerberosOperationHandler.class), eq(false), isNull(ActionLog.class)))
         .andReturn(new CreatePrincipalsServerAction.CreatePrincipalResult("anything", "password", 1))
         .times(3);
+
+    if(createAmbariIdentities) {
+      if (ambariServerPrincipalAsService) {
+        expect(createPrincipalsServerAction.createPrincipal(capture(capturePrincipal), eq(true), anyObject(Map.class), anyObject(KerberosOperationHandler.class), eq(false), isNull(ActionLog.class)))
+            .andReturn(new CreatePrincipalsServerAction.CreatePrincipalResult("anything", "password", 1))
+            .times(2);
+      } else {
+        expect(createPrincipalsServerAction.createPrincipal(capture(capturePrincipal), eq(true), anyObject(Map.class), anyObject(KerberosOperationHandler.class), eq(false), isNull(ActionLog.class)))
+            .andReturn(new CreatePrincipalsServerAction.CreatePrincipalResult("anything", "password", 1))
+            .times(1);
+        expect(createPrincipalsServerAction.createPrincipal(capture(capturePrincipal), eq(false), anyObject(Map.class), anyObject(KerberosOperationHandler.class), eq(false), isNull(ActionLog.class)))
+            .andReturn(new CreatePrincipalsServerAction.CreatePrincipalResult("anything", "password", 1))
+            .times(1);
+      }
+    }
 
     CreateKeytabFilesServerAction createKeytabFilesServerAction = injector.getInstance(CreateKeytabFilesServerAction.class);
     expect(createKeytabFilesServerAction.createKeytab(capture(capturePrincipalForKeytab), eq("password"), eq(1), anyObject(KerberosOperationHandler.class), eq(true), eq(true), isNull(ActionLog.class)))
         .andReturn(new Keytab())
-        .times(3);
-    
+        .times(createAmbariIdentities ? 5 : 3);
+
     replayAll();
 
     AmbariMetaInfo ambariMetaInfo = injector.getInstance(AmbariMetaInfo.class);
@@ -2547,7 +2663,7 @@ public class KerberosHelperTest extends EasyMockSupport {
 
     CredentialStoreService credentialStoreService = injector.getInstance(CredentialStoreService.class);
     credentialStoreService.setCredential(cluster.getClusterName(), KerberosHelper.KDC_ADMINISTRATOR_CREDENTIAL_ALIAS,
-      new PrincipalKeyCredential("principal", "password"), CredentialStoreType.TEMPORARY);
+        new PrincipalKeyCredential("principal", "password"), CredentialStoreType.TEMPORARY);
 
     KerberosHelper kerberosHelper = injector.getInstance(KerberosHelper.class);
     kerberosHelper.ensureHeadlessIdentities(cluster, existingConfigurations, services);
@@ -2555,16 +2671,26 @@ public class KerberosHelperTest extends EasyMockSupport {
     verifyAll();
 
     List<? extends String> capturedPrincipals = capturePrincipal.getValues();
-    assertEquals(3, capturedPrincipals.size());
+    assertEquals(createAmbariIdentities ? 5 : 3, capturedPrincipals.size());
     assertTrue(capturedPrincipals.contains("s1_1@EXAMPLE.COM"));
     assertTrue(capturedPrincipals.contains("s1c1_1@EXAMPLE.COM"));
     assertTrue(capturedPrincipals.contains("s2_1@EXAMPLE.COM"));
 
     List<? extends String> capturedPrincipalsForKeytab = capturePrincipalForKeytab.getValues();
-    assertEquals(3, capturedPrincipalsForKeytab.size());
+    assertEquals(createAmbariIdentities ? 5 : 3, capturedPrincipalsForKeytab.size());
     assertTrue(capturedPrincipalsForKeytab.contains("s1_1@EXAMPLE.COM"));
     assertTrue(capturedPrincipalsForKeytab.contains("s1c1_1@EXAMPLE.COM"));
     assertTrue(capturedPrincipalsForKeytab.contains("s2_1@EXAMPLE.COM"));
+
+    if(createAmbariIdentities) {
+      String spnegoPrincipalName = String.format("HTTP/%s@EXAMPLE.COM", ambariServerHostname);
+
+      assertTrue(capturedPrincipals.contains(ambariServerPrincipalNameExpected));
+      assertTrue(capturedPrincipals.contains(spnegoPrincipalName));
+
+      assertTrue(capturedPrincipalsForKeytab.contains(ambariServerPrincipalNameExpected));
+      assertTrue(capturedPrincipalsForKeytab.contains(spnegoPrincipalName));
+    }
   }
 
   /**
@@ -2599,7 +2725,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     Map<String, Service> servicesMap = new HashMap<String, Service>();
     servicesMap.put("SERVICE1", service1);
 
-    Cluster cluster = createMockCluster(Arrays.asList(host1), SecurityType.KERBEROS, configKrb5Conf, configKerberosEnv);
+    Cluster cluster = createMockCluster("c1", Arrays.asList(host1), SecurityType.KERBEROS, configKrb5Conf, configKerberosEnv);
     expect(cluster.getServices()).andReturn(servicesMap).times(1);
 
     Map<String, String> kerberosDescriptorProperties = new HashMap<String, String>();
@@ -2770,7 +2896,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     final Config krb5ConfConfig = createMock(Config.class);
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
-    final Cluster cluster = createMockCluster(Arrays.asList(hostA, hostB, hostC), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", Arrays.asList(hostA, hostB, hostC), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -3015,7 +3141,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     final Config krb5ConfConfig = createMock(Config.class);
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
-    final Cluster cluster = createMockCluster(Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -3147,10 +3273,10 @@ public class KerberosHelperTest extends EasyMockSupport {
     KerberosHelper kerberosHelper = injector.getInstance(KerberosHelper.class);
     boolean managingIdentities = !Boolean.FALSE.equals(manageIdentities);
 
-    final Map<String, String> kerberosEnvProperties = new HashMap<String,String>();
-    kerberosEnvProperties.put("kdc_type","mit-kdc");
-    kerberosEnvProperties.put("realm","FOOBAR.COM");
-    kerberosEnvProperties.put("manage_identities","FOOBAR.COM");
+    final Map<String, String> kerberosEnvProperties = new HashMap<String, String>();
+    kerberosEnvProperties.put("kdc_type", "mit-kdc");
+    kerberosEnvProperties.put("realm", "FOOBAR.COM");
+    kerberosEnvProperties.put("manage_identities", "FOOBAR.COM");
     kerberosEnvProperties.put("manage_identities",
         (manageIdentities == null)
             ? null
@@ -3379,7 +3505,7 @@ public class KerberosHelperTest extends EasyMockSupport {
     final Config krb5ConfConfig = createMock(Config.class);
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
-    final Cluster cluster = createMockCluster(Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
+    final Cluster cluster = createMockCluster("c1", Collections.singleton(host), SecurityType.KERBEROS, krb5ConfConfig, kerberosEnvConfig);
     expect(cluster.getServices())
         .andReturn(new HashMap<String, Service>() {
           {
@@ -3559,8 +3685,8 @@ public class KerberosHelperTest extends EasyMockSupport {
         })
         .anyTimes();
     expect(cluster.getServiceComponentHosts(InetAddress.getLocalHost().getCanonicalHostName().toLowerCase()))
-      .andReturn(new ArrayList<ServiceComponentHost>())
-      .anyTimes();
+        .andReturn(new ArrayList<ServiceComponentHost>())
+        .anyTimes();
 
     final Map<String, String> kerberosEnvProperties = new HashMap<String, String>() {
       {
@@ -3580,12 +3706,12 @@ public class KerberosHelperTest extends EasyMockSupport {
     expect(krb5ConfConfig.getProperties()).andReturn(krb5ConfProperties).anyTimes();
 
     expect(cluster.getDesiredConfigByType("krb5-conf"))
-      .andReturn(krb5ConfConfig)
-      .anyTimes();
+        .andReturn(krb5ConfConfig)
+        .anyTimes();
 
     expect(cluster.getDesiredConfigByType("kerberos-env"))
-      .andReturn(kerberosEnvConfig)
-      .anyTimes();
+        .andReturn(kerberosEnvConfig)
+        .anyTimes();
 
     expect(cluster.getCurrentStackVersion())
         .andReturn(new StackId("HDP", "2.2"))
@@ -3745,31 +3871,54 @@ public class KerberosHelperTest extends EasyMockSupport {
 
   private void addAmbariServerIdentity(Map<String, String> kerberosEnvProperties) throws Exception {
 
-    boolean createAmbariPrincipal = (kerberosEnvProperties == null)
-        || !"false".equalsIgnoreCase(kerberosEnvProperties.get("create_ambari_principal"));
-
     KerberosHelperImpl kerberosHelper = injector.getInstance(KerberosHelperImpl.class);
 
-    KerberosIdentityDescriptor ambariKerberosIdentity = createMock(KerberosIdentityDescriptor.class);
+    boolean createAmbariIdentities = kerberosHelper.createAmbariIdentities(kerberosEnvProperties);
+
+    KerberosIdentityDescriptor ambariKerberosIdentity = null;
 
     KerberosDescriptor kerberosDescriptor = createMock(KerberosDescriptor.class);
-    if (createAmbariPrincipal) {
-      expect(kerberosDescriptor.getIdentity(KerberosHelper.AMBARI_IDENTITY_NAME)).andReturn(ambariKerberosIdentity).once();
-    }
+    if (createAmbariIdentities) {
+      String ambariServerPrincipalName = "ambari-server-${cluster_name}@${realm}";
+      KerberosPrincipalType ambariServerPrincipalType = KerberosPrincipalType.USER;
+      String ambariServerKeytabFilePath = new File("ambari.server.keytab").getAbsolutePath();
 
-    List<KerberosIdentityDescriptor> identities = new ArrayList<KerberosIdentityDescriptor>();
+      ambariKerberosIdentity = createMockIdentityDescriptor(
+          KerberosHelper.AMBARI_SERVER_KERBEROS_IDENTITY_NAME,
+          createMockPrincipalDescriptor(ambariServerPrincipalName, ambariServerPrincipalType, "ambari", null),
+          createMockKeytabDescriptor(ambariServerKeytabFilePath, null));
+
+      ArrayList<KerberosIdentityDescriptor> ambarServerComponent1Identities = new ArrayList<KerberosIdentityDescriptor>();
+      ambarServerComponent1Identities.add(ambariKerberosIdentity);
+
+      ambarServerComponent1Identities.add(createMockIdentityDescriptor(
+          "ambari-server_spnego",
+          createMockPrincipalDescriptor("HTTP/_HOST@${realm}", KerberosPrincipalType.SERVICE, null, null),
+          createMockKeytabDescriptor("spnego.service.keytab", null)));
+
+      HashMap<String, KerberosComponentDescriptor> ambariServerComponentDescriptorMap = new HashMap<String, KerberosComponentDescriptor>();
+      KerberosComponentDescriptor componentDescrptor = createMockComponentDescriptor("AMBARI_SERVER", ambarServerComponent1Identities, null);
+      ambariServerComponentDescriptorMap.put("AMBARI_SERVER", componentDescrptor);
+
+      KerberosServiceDescriptor ambariServiceKerberosDescriptor = createMockServiceDescriptor("AMBARI", ambariServerComponentDescriptorMap, null);
+      expect(ambariServiceKerberosDescriptor.getComponent("AMBARI_SERVER")).andReturn(componentDescrptor).once();
+
+      expect(kerberosDescriptor.getService("AMBARI")).andReturn(ambariServiceKerberosDescriptor).once();
+    }
 
     replayAll();
 
     // Needed by infrastructure
     injector.getInstance(AmbariMetaInfo.class).init();
 
-    kerberosHelper.addAmbariServerIdentity(kerberosEnvProperties, kerberosDescriptor, identities);
+    List<KerberosIdentityDescriptor> identities = (createAmbariIdentities)
+        ? kerberosHelper.getAmbariServerIdentities(kerberosDescriptor)
+        : new ArrayList<KerberosIdentityDescriptor>();
 
     verifyAll();
 
-    if (createAmbariPrincipal) {
-      Assert.assertEquals(1, identities.size());
+    if (createAmbariIdentities) {
+      Assert.assertEquals(2, identities.size());
       Assert.assertSame(ambariKerberosIdentity, identities.get(0));
     } else {
       Assert.assertTrue(identities.isEmpty());
@@ -3786,6 +3935,10 @@ public class KerberosHelperTest extends EasyMockSupport {
     KerberosKeytabDescriptor descriptor = createMock(KerberosKeytabDescriptor.class);
     expect(descriptor.getFile()).andReturn(file).anyTimes();
     expect(descriptor.getConfiguration()).andReturn(configuration).anyTimes();
+    expect(descriptor.getOwnerName()).andReturn("user1").anyTimes();
+    expect(descriptor.getOwnerAccess()).andReturn("rw").anyTimes();
+    expect(descriptor.getGroupName()).andReturn("groupA").anyTimes();
+    expect(descriptor.getGroupAccess()).andReturn("r").anyTimes();
     return descriptor;
   }
 
@@ -3866,14 +4019,14 @@ public class KerberosHelperTest extends EasyMockSupport {
     return host;
   }
 
-  private Cluster createMockCluster(Collection<Host> hosts, SecurityType securityType, Config krb5ConfConfig, Config kerberosEnvConfig) {
+  private Cluster createMockCluster(String clusterName, Collection<Host> hosts, SecurityType securityType, Config krb5ConfConfig, Config kerberosEnvConfig) {
     Cluster cluster = createMock(Cluster.class);
     expect(cluster.getHosts()).andReturn(hosts).anyTimes();
     expect(cluster.getClusterId()).andReturn(1L).anyTimes();
     expect(cluster.getSecurityType()).andReturn(securityType).anyTimes();
     expect(cluster.getDesiredConfigByType("krb5-conf")).andReturn(krb5ConfConfig).anyTimes();
     expect(cluster.getDesiredConfigByType("kerberos-env")).andReturn(kerberosEnvConfig).anyTimes();
-    expect(cluster.getClusterName()).andReturn("c1").anyTimes();
+    expect(cluster.getClusterName()).andReturn(clusterName).anyTimes();
     expect(cluster.getCurrentStackVersion())
         .andReturn(new StackId("HDP", "2.2"))
         .anyTimes();
