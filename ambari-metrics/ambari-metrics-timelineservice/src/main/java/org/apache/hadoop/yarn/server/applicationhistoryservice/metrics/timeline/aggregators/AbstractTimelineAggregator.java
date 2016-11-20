@@ -398,7 +398,6 @@ public abstract class AbstractTimelineAggregator implements TimelineMetricAggreg
   }
 
   /**
-<<<<<<< HEAD
    * Get @AGGREGATOR_TYPE based on the output table.
    * This is solely used by the HAController to determine which lock to acquire.
    */
@@ -416,7 +415,7 @@ public abstract class AbstractTimelineAggregator implements TimelineMetricAggreg
     return aggregatorName;
   }
 
-  /*
+  /**
    * Run 1 downsampler query.
    * @param conn
    * @param condition
