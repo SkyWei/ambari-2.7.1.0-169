@@ -708,25 +708,46 @@ public class ViewRegistry {
     LOG.debug("Copy all privileges from " + sourceInstanceEntity.getName() + " to " +
               targetInstanceEntity.getName());
     List<PrivilegeEntity> targetInstancePrivileges = privilegeDAO.findByResourceId(targetInstanceEntity.getResource().getId());
-    if (targetInstancePrivileges.size() > 0) {
-      LOG.warn("Target instance {} already has privileges assigned, these will not be deleted. Manual clean up may be needed",targetInstanceEntity.getName());
-    }
-
     List<PrivilegeEntity> sourceInstancePrivileges = privilegeDAO.findByResourceId(sourceInstanceEntity.getResource().getId());
-    for (PrivilegeEntity sourcePrivilege : sourceInstancePrivileges) {
-      PrivilegeEntity targetPrivilege = new PrivilegeEntity();
-      targetPrivilege.setPrincipal(sourcePrivilege.getPrincipal());
-      targetPrivilege.setResource(targetInstanceEntity.getResource());
-      targetPrivilege.setPermission(sourcePrivilege.getPermission());
-      try {
-        privilegeDAO.create(targetPrivilege);
-        targetPrivilege.getPrincipal().getPrivileges().add(sourcePrivilege);
-      } catch (Exception e){
-        LOG.warn("Could not migrate privilege {} ",targetPrivilege);
-        LOG.error("Caught exception",e);
-      }
 
+    // Do not run migration when the target Instance has already got some privileges.
+    // This means that the upgrade process would have already run during the first start of ambari after upgrade
+    if (targetInstancePrivileges.size() > 0) {
+      return;
     }
+
+    for (PrivilegeEntity sourcePrivilege : sourceInstancePrivileges) {
+      if (checkAdditionOfPrivilegesRequired(sourcePrivilege, targetInstancePrivileges)) {
+        PrivilegeEntity targetPrivilege = new PrivilegeEntity();
+        targetPrivilege.setPrincipal(sourcePrivilege.getPrincipal());
+        targetPrivilege.setResource(targetInstanceEntity.getResource());
+        targetPrivilege.setPermission(sourcePrivilege.getPermission());
+        try {
+          privilegeDAO.create(targetPrivilege);
+          targetPrivilege.getPrincipal().getPrivileges().add(sourcePrivilege);
+        } catch (Exception e){
+          LOG.warn("Could not migrate privilege {} ",targetPrivilege);
+          LOG.error("Caught exception",e);
+        }
+      }
+    }
+
+  }
+
+  /**
+   * Checks if the all the targetPrivileges are different than the sourcePrivilege
+   * @param sourcePrivilege - Source privilege
+   * @param targetInstancePrivileges - target privileges
+   * @return true if the sourcePrivilege is different than all the targetPrivileges
+   */
+  private boolean checkAdditionOfPrivilegesRequired(PrivilegeEntity sourcePrivilege, List<PrivilegeEntity> targetInstancePrivileges) {
+    for (PrivilegeEntity targetPrivilege : targetInstancePrivileges) {
+      if (targetPrivilege.getPermission().getId().equals(sourcePrivilege.getPermission().getId()) &&
+          targetPrivilege.getPrincipal().getId().equals(sourcePrivilege.getPrincipal().getId())) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
