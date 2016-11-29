@@ -5529,7 +5529,7 @@ public class Configuration {
     // Log any found issues.
     if (StringUtils.isEmpty(kerberosAuthProperties.getSpnegoPrincipalName())) {
       String message = String.format("The SPNEGO principal name specified in %s is empty. " +
-              "This will cause issues authenticating users using Kerberos.",
+          "This will cause issues authenticating users using Kerberos.",
           KERBEROS_AUTH_SPNEGO_PRINCIPAL.getKey());
       LOG.error(message);
       throw new IllegalArgumentException(message);

@@ -25,7 +25,7 @@ import org.apache.hadoop.metrics2.sink.timeline.PostProcessingUtil;
 import org.apache.hadoop.metrics2.sink.timeline.TimelineMetric;
 import org.apache.hadoop.metrics2.sink.timeline.TimelineMetricMetadata;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.PhoenixHBaseAccessor;
-import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.availability.AggregationTaskRunner.AGGREGATOR_NAME;
+import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.availability.AggregationTaskRunner;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.availability.MetricCollectorHAController;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.discovery.TimelineMetricMetadataKey;
 import org.apache.hadoop.yarn.server.applicationhistoryservice.metrics.timeline.discovery.TimelineMetricMetadataManager;
@@ -64,7 +64,7 @@ public class TimelineMetricClusterAggregatorSecond extends AbstractTimelineAggre
   private String skipAggrPatternStrings;
 
 
-  public TimelineMetricClusterAggregatorSecond(AGGREGATOR_NAME aggregatorName,
+  public TimelineMetricClusterAggregatorSecond(AggregationTaskRunner.AGGREGATOR_NAME aggregatorName,
                                                TimelineMetricMetadataManager metadataManager,
                                                PhoenixHBaseAccessor hBaseAccessor,
                                                Configuration metricsConf,

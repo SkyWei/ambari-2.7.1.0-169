@@ -264,10 +264,10 @@ public class UpgradeCatalog250 extends AbstractUpgradeCatalog {
     // credential_store_supported SMALLINT DEFAULT 0 NOT NULL
     // credential_store_enabled SMALLINT DEFAULT 0 NOT NULL
     dbAccessor.addColumn(SERVICE_DESIRED_STATE_TABLE,
-            new DBColumnInfo(CREDENTIAL_STORE_SUPPORTED_COL, Short.class, null, 0, false));
+      new DBColumnInfo(CREDENTIAL_STORE_SUPPORTED_COL, Short.class, null, 0, false));
 
     dbAccessor.addColumn(SERVICE_DESIRED_STATE_TABLE,
-            new DBColumnInfo(CREDENTIAL_STORE_ENABLED_COL, Short.class, null, 0, false));
+      new DBColumnInfo(CREDENTIAL_STORE_ENABLED_COL, Short.class, null, 0, false));
   }
 }
 

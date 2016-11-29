@@ -158,3 +158,6 @@ class Emitter(threading.Thread):
     for i in xrange(0, length - 1):
       hash = 31*hash + ord(hostname[i])
     return hash
+
+
+

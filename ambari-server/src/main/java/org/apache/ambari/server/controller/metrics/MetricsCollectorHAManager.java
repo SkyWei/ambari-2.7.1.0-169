@@ -18,12 +18,13 @@
 package org.apache.ambari.server.controller.metrics;
 
 import com.google.common.eventbus.Subscribe;
+import com.google.inject.Inject;
 import org.apache.ambari.server.controller.AmbariServer;
 import org.apache.ambari.server.events.MetricsCollectorHostDownEvent;
 import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.google.inject.Inject;
+
 import java.util.HashMap;
 import java.util.Map;
 

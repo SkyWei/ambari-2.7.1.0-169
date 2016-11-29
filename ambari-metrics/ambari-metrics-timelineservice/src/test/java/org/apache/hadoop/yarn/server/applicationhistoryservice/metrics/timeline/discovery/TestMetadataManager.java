@@ -29,15 +29,14 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
 public class TestMetadataManager extends AbstractMiniHBaseClusterTest {
   TimelineMetricMetadataManager metadataManager;
-
-
-
 
   @Before
   public void insertDummyRecords() throws IOException, SQLException {
