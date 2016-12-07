@@ -397,7 +397,7 @@ start_metastore_path = format("{tmp_dir}/start_metastore_script")
 
 hadoop_heapsize = config['configurations']['hadoop-env']['hadoop_heapsize']
 
-if 'role' in config and config['role'] in ["HIVE_SERVER", "HIVE_METASTORE"]:
+if 'role' in config and config['role'] in ["HIVE_SERVER", "HIVE_SERVER_INTERACTIVE", "HIVE_METASTORE"]:
   if check_stack_feature(StackFeature.HIVE_ENV_HEAPSIZE, version_for_stack_feature_checks):
     hive_heapsize = config['configurations']['hive-env']['hive.heapsize']
   else:
