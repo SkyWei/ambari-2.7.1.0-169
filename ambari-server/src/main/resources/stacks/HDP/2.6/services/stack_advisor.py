@@ -18,7 +18,6 @@ limitations under the License.
 """
 from resource_management.core.logger import Logger
 import json
-import re
 from resource_management.libraries.functions import format
 
 
@@ -31,8 +30,7 @@ class HDP26StackAdvisor(HDP25StackAdvisor):
       parentRecommendConfDict = super(HDP26StackAdvisor, self).getServiceConfigurationRecommenderDict()
       childRecommendConfDict = {
           "DRUID": self.recommendDruidConfigurations,
-          "ATLAS": self.recommendAtlasConfigurations,
-          "TEZ": self.recommendTezConfigurations
+          "ATLAS": self.recommendAtlasConfigurations
       }
       parentRecommendConfDict.update(childRecommendConfDict)
       return parentRecommendConfDict
@@ -227,24 +225,3 @@ class HDP26StackAdvisor(HDP25StackAdvisor):
                                                          "druid.processing.numThreads")}
       ]
       return self.toConfigurationValidationProblems(validationItems, "druid-broker")
-
-  def recommendTezConfigurations(self, configurations, clusterData, services, hosts):
-    super(HDP26StackAdvisor, self).recommendTezConfigurations(configurations, clusterData, services, hosts)
-    putTezProperty = self.putProperty(configurations, "tez-site")
-
-    # TEZ JVM options
-    jvmGCParams = "-XX:+UseParallelGC"
-    if "ambari-server-properties" in services and "java.home" in services["ambari-server-properties"]:
-      # JDK8 needs different parameters
-      match = re.match(".*\/jdk(1\.\d+)[\-\_\.][^/]*$", services["ambari-server-properties"]["java.home"])
-      if match and len(match.groups()) > 0:
-        # Is version >= 1.8
-        versionSplits = re.split("\.", match.group(1))
-        if versionSplits and len(versionSplits) > 1 and int(versionSplits[0]) > 0 and int(versionSplits[1]) > 7:
-          jvmGCParams = "-XX:+UseG1GC -XX:+ResizeTLAB"
-    tez_jvm_opts = "-XX:+PrintGCDetails -verbose:gc -XX:+PrintGCTimeStamps -XX:+UseNUMA "
-    # Append 'jvmGCParams' and 'Heap Dump related option' (({{heap_dump_opts}}) Expanded while writing the
-    # configurations at start/restart time).
-    tez_jvm_updated_opts = tez_jvm_opts + jvmGCParams + "{{heap_dump_opts}}"
-    putTezProperty('tez.task.launch.cmd-opts', tez_jvm_updated_opts)
-    Logger.info("Updated 'tez-site' config 'tez.task.launch.cmd-opts' as : {0}".format(tez_jvm_updated_opts))

@@ -307,7 +307,6 @@ class HDP22StackAdvisor(HDP21StackAdvisor):
     putWebhcatSiteProperty = self.putProperty(configurations, "webhcat-site", services)
     putHiveSitePropertyAttribute = self.putPropertyAttribute(configurations, "hive-site")
     putHiveEnvPropertyAttributes = self.putPropertyAttribute(configurations, "hive-env")
-    putHiveServerPropertyAttributes = self.putPropertyAttribute(configurations, "hiveserver2-site")
     servicesList = [service["StackServices"]["service_name"] for service in services["services"]]
 
     #  Storage
@@ -528,8 +527,7 @@ class HDP22StackAdvisor(HDP21StackAdvisor):
       putHiveServerProperty("hive.security.authorization.enabled", "true")
       putHiveServerProperty("hive.security.authorization.manager", "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory")
       putHiveServerProperty("hive.security.authenticator.manager", "org.apache.hadoop.hive.ql.security.SessionStateUserAuthenticator")
-      putHiveServerProperty("hive.conf.restricted.list", "hive.security.authenticator.manager,hive.security.authorization.manager,hive.security.metastore.authorization.manager,"
-                                                         "hive.security.metastore.authenticator.manager,hive.users.in.admin.role,hive.server2.xsrf.filter.enabled,hive.security.authorization.enabled")
+      putHiveServerProperty("hive.conf.restricted.list", "hive.security.authenticator.manager,hive.security.authorization.manager,hive.users.in.admin.role")
       putHiveSiteProperty("hive.security.authorization.manager", "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdConfOnlyAuthorizerFactory")
       if sqlstdauth_class not in auth_manager_values:
         auth_manager_values.append(sqlstdauth_class)
@@ -545,16 +543,7 @@ class HDP22StackAdvisor(HDP21StackAdvisor):
       putHiveServerProperty("hive.security.authorization.enabled", "true")
       putHiveServerProperty("hive.security.authorization.manager", "com.xasecure.authorization.hive.authorizer.XaSecureHiveAuthorizerFactory")
       putHiveServerProperty("hive.security.authenticator.manager", "org.apache.hadoop.hive.ql.security.SessionStateUserAuthenticator")
-      putHiveServerProperty("hive.conf.restricted.list", "hive.security.authenticator.manager,hive.security.authorization.manager,hive.security.metastore.authorization.manager,"
-                                                         "hive.security.metastore.authenticator.manager,hive.users.in.admin.role,hive.server2.xsrf.filter.enabled,hive.security.authorization.enabled")
-
-    # hive_security_authorization == 'None'
-    if str(configurations["hive-env"]["properties"]["hive_security_authorization"]).lower() == "None":
-      putHiveSiteProperty("hive.server2.enable.doAs", "true")
-      putHiveServerProperty("hive.security.authorization.enabled", "false")
-      putHiveServerPropertyAttributes("hive.security.authorization.manager", 'delete', 'true')
-      putHiveServerPropertyAttributes("hive.security.authenticator.manager", 'delete', 'true')
-      putHiveServerPropertyAttributes("hive.conf.restricted.list", 'delete', 'true')
+      putHiveServerProperty("hive.conf.restricted.list", "hive.security.authorization.enabled,hive.security.authorization.manager,hive.security.authenticator.manager")
 
     putHiveSiteProperty("hive.server2.use.SSL", "false")
 
