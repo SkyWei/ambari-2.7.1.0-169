@@ -56,6 +56,8 @@ import java.util.concurrent.TimeUnit;
 
 import javax.persistence.EntityManager;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.Role;
 import org.apache.ambari.server.RoleCommand;
@@ -935,6 +937,7 @@ public class TestActionScheduler {
 
     aq.enqueue(Stage.INTERNAL_HOSTNAME, s.getExecutionCommands(null).get(0).getExecutionCommand());
     List<ExecutionCommand> commandsToSchedule = new ArrayList<ExecutionCommand>();
+    Multimap<String, AgentCommand> commandsToEnqueue = ArrayListMultimap.create();
 
     boolean taskShouldBeSkipped = stageSupportsAutoSkip && autoSkipFailedTask;
     db.timeoutHostRole(EasyMock.anyString(), EasyMock.anyLong(), EasyMock.anyLong(),
@@ -953,7 +956,7 @@ public class TestActionScheduler {
 
     EasyMock.replay(scheduler, fsm, host, db, cluster, ambariEventPublisher, service, serviceComponent, serviceComponentHost);
 
-    scheduler.processInProgressStage(s, commandsToSchedule);
+    scheduler.processInProgressStage(s, commandsToSchedule, commandsToEnqueue);
 
     EasyMock.verify(scheduler, fsm, host, db, cluster, ambariEventPublisher, service, serviceComponent, serviceComponentHost);
 
