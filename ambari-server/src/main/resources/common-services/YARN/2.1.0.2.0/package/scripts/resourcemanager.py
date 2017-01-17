@@ -228,7 +228,7 @@ class ResourcemanagerDefault(Resourcemanager):
 
   def disable_security(self, env):
     import params
-    if not params.rm_zk_address:
+    if 'ZKRMStateStore' not in params.rm_zk_store_class:
       Logger.info("Skipping reverting ACL")
       return
     zkmigrator = ZkMigrator(
@@ -237,9 +237,8 @@ class ResourcemanagerDefault(Resourcemanager):
       params.java64_home, \
       params.yarn_jaas_file, \
       params.yarn_user)
+    Logger.info("Reverting ACL of znode %s" % params.rm_zk_znode)
     zkmigrator.set_acls(params.rm_zk_znode, 'world:anyone:crdwa')
-    zkmigrator.set_acls(params.rm_zk_failover_znode, 'world:anyone:crdwa')
-    zkmigrator.set_acls(params.hadoop_registry_zk_root, 'world:anyone:crdwa')
 
   def wait_for_dfs_directories_created(self, *dirs):
     import params
