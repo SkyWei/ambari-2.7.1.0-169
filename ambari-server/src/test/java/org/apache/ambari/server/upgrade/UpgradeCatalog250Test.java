@@ -346,6 +346,9 @@ public class UpgradeCatalog250Test {
     upgradeCatalog250.updateYarnSite();
       expectLastCall().once();
 
+    upgradeCatalog250.updateYarnSite();
+      expectLastCall().once();
+
     replay(upgradeCatalog250);
 
     upgradeCatalog250.executeDMLUpdates();
