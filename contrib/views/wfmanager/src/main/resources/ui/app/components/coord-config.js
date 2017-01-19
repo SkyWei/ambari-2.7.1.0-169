@@ -109,6 +109,7 @@ export default Ember.Component.extend(Validations, Ember.Evented, {
       this.set('coordinator.name', Ember.copy(this.get('tabInfo.name')));
     }
     this.schedulePersistWorkInProgress();
+    this.set('childComponents', new Map());
   }.on('init'),
   conditionalDataInExists :false,
   elementsInserted : function(){
@@ -594,6 +595,9 @@ export default Ember.Component.extend(Validations, Ember.Evented, {
     },
     closeSave(){
       this.set("showingSaveWorkflow", false);
+    },
+    toggleIO(){
+      this.$('#collapse').collapse('toggle');
     }
   }
 });
