@@ -228,8 +228,11 @@ class ResourcemanagerDefault(Resourcemanager):
 
   def disable_security(self, env):
     import params
-    if 'ZKRMStateStore' not in params.rm_zk_store_class:
-      Logger.info("Skipping reverting ACL")
+    if not params.stack_supports_zk_security:
+      Logger.info("Stack doesn't support zookeeper security")
+      return
+    if not params.rm_zk_address:
+      Logger.info("No zookeeper connection string. Skipping reverting ACL")
       return
     zkmigrator = ZkMigrator(
       params.rm_zk_address, \
@@ -237,7 +240,6 @@ class ResourcemanagerDefault(Resourcemanager):
       params.java64_home, \
       params.yarn_jaas_file, \
       params.yarn_user)
-    Logger.info("Reverting ACL of znode %s" % params.rm_zk_znode)
     zkmigrator.set_acls(params.rm_zk_znode, 'world:anyone:crdwa')
 
   def wait_for_dfs_directories_created(self, *dirs):
