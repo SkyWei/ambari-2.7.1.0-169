@@ -40,6 +40,7 @@ Router.map(function() {
         this.route('new');
         this.route('upload-table');
         this.route('table', {path: '/:name'}, function() {
+          this.route('rename');
           this.route('columns');
           this.route('partitions');
           this.route('storage');
