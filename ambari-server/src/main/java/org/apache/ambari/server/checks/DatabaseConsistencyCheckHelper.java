@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.inject.Provider;
 import javax.persistence.EntityManager;
@@ -898,6 +900,12 @@ public class DatabaseConsistencyCheckHelper {
                 Collection<String> serviceConfigsFromDB = dbServiceConfigs.get(serviceName);
                 if (serviceConfigsFromDB != null && serviceConfigsFromStack != null) {
                   serviceConfigsFromStack.removeAll(serviceConfigsFromDB);
+
+                  // skip ranger-{service_name}-* from being checked, unless ranger is installed
+                  if(!dbServiceConfigs.containsKey("RANGER")) {
+                    removeStringsByRegexp(serviceConfigsFromStack, "^ranger-"+ serviceName.toLowerCase() + "-" + "*");
+                  }
+
                   if (!serviceConfigsFromStack.isEmpty()) {
                     LOG.error("Required config(s): {} is(are) not available for service {} with service config version {} in cluster {}",
                             StringUtils.join(serviceConfigsFromStack, ","), serviceName, Integer.toString(serviceVersion), clusterName);
@@ -967,4 +975,15 @@ public class DatabaseConsistencyCheckHelper {
   }
 
 
+  private static void removeStringsByRegexp(Collection<String> stringItems, String regexp) {
+      Pattern pattern = Pattern.compile(regexp);
+
+      for (Iterator<String> iterator = stringItems.iterator(); iterator.hasNext();) {
+        String stringItem = iterator.next();
+        Matcher matcher = pattern.matcher(stringItem);
+        if (matcher.find()) {
+          iterator.remove();
+        }
+      }
+  }
 }
