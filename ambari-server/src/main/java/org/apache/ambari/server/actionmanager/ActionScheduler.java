@@ -33,7 +33,6 @@ import java.util.concurrent.TimeUnit;
 
 import javax.persistence.EntityManager;
 
-import com.google.common.collect.Multimap;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.ClusterNotFoundException;
 import org.apache.ambari.server.Role;

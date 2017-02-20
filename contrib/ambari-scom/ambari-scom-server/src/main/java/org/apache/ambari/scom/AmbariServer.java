@@ -66,7 +66,7 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * Main Ambari server class
+ * Main Ambari server class.
  */
 @Singleton
 public class AmbariServer {

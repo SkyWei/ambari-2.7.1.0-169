@@ -57,8 +57,6 @@ import java.util.concurrent.TimeUnit;
 
 import javax.persistence.EntityManager;
 
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.Multimap;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.H2DatabaseCleaner;
 import org.apache.ambari.server.Role;
