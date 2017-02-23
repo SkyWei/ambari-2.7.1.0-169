@@ -94,13 +94,13 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
   isWorkflowImporting: false,
   isAssetPublishing: false,
   errorMsg: "",
+  data : {
+    "responseText": ""
+  },
   shouldPersist : false,
   useCytoscape: Constants.useCytoscape,
   cyOverflow: {},
   clipboard : Ember.computed.alias('clipboardService.clipboard'),
-  isStackTraceVisible: false,
-  isStackTraceAvailable: false,
-  stackTrace:"",
   showingStreamImport:false,
   fileInfo:Ember.Object.create(),
   isDraft: false,
@@ -310,24 +310,6 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
   doValidation(){
     this.validate();
   },
-  getStackTrace(data){
-    if(data){
-     try{
-      var stackTraceMsg = JSON.parse(data).stackTrace;
-      if(!stackTraceMsg){
-        return "";
-      }
-     if(stackTraceMsg instanceof Array){
-       return stackTraceMsg.join("").replace(/\tat /g, '&nbsp;&nbsp;&nbsp;&nbsp;at&nbsp;');
-     } else {
-       return stackTraceMsg.replace(/\tat /g, '<br/>&nbsp;&nbsp;&nbsp;&nbsp;at&nbsp;');
-     }
-     } catch(err){
-       return "";
-     }
-    }
-    return "";
-  },
   importWorkflow(filePath){
     var self = this;
     this.set("isWorkflowImporting", true);
@@ -343,8 +325,8 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
       this.set("workflowFilePath", filePath);
     }.bind(this)).catch(function(data){
       console.error(data);
-      self.set("errorMsg", "There is some problem while importing.Please try again.");
-      self.showingErrorMsgInDesigner(data);
+      self.set("errorMsg", "There is some problem while importing.");
+      self.set("data", data);
       self.set("isWorkflowImporting", false);
     });
   },
@@ -490,8 +472,8 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
     exportActionNodeXmlDefered.promise.then(function(data){
       self.set("isAssetPublishing", false);
     }.bind(this)).catch(function(data){
-      self.set("errorMsg", "There is some problem while publishing asset. Please try again.");
-      self.showingErrorMsgInDesigner(data);
+      self.set("errorMsg", "There is some problem while publishing asset.");
+      self.set("data", data);
       self.set("isAssetPublishing", false);
     });
 
@@ -738,15 +720,6 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
       this.set("showingWorkflowConfigProps",true);
     }
   },
-  showingErrorMsgInDesigner(data){
-      var self = this, stackTraceMsg = self.getStackTrace(data.responseText);
-      if(stackTraceMsg.length){
-        self.set("stackTrace", stackTraceMsg);
-        self.set("isStackTraceAvailable", true);
-      } else {
-        self.set("isStackTraceAvailable", false);
-      }
-  },
   isDraftExists(path){
     var deferred = Ember.RSVP.defer(), url, self = this;
     if(!path){
@@ -831,12 +804,6 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
         self.importActionNodeFromString(event.target.result);
       });
       reader.readAsText(file);
-    },
-    showStackTrace(){
-      this.set("isStackTraceVisible", true);
-    },
-    hideStackTrace(){
-      this.set("isStackTraceVisible", false);
     },
     showWorkflowSla (value) {
       this.set('showWorkflowSla', value);
@@ -1028,9 +995,8 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
         actionSettingsXmlDefered.promise.then(function(data){
           this.importActionSettingsFromString(data);
         }.bind(this)).catch(function(data){
-          console.error(data);
-          self.set("errorMsg", "There is some problem while importing asset.Please try again.");
-          self.showingErrorMsgInDesigner(data);
+          self.set("errorMsg", "There is some problem while importing asset.");
+          self.set("data", data);
         });
       }
     },
@@ -1046,9 +1012,8 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
         actionSettingsXmlDefered.promise.then(function(data){
           this.importActionNodeFromString(data);
         }.bind(this)).catch(function(data){
-          console.error(data);
-          self.set("errorMsg", "There is some problem while importing asset. Please try again.");
-          self.showingErrorMsgInDesigner(data);
+          self.set("errorMsg", "There is some problem while importing asset.");
+          self.set("data", data);
         });
       }
     },
@@ -1183,9 +1148,9 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
       saveAssetConfigDefered.promise.then(function(data){
         self.set("isAssetPublishing", false);
       }.bind(this)).catch(function(data){
+        self.set("errorMsg", "There is some problem while saving asset.");
+        self.set("data", data);
         self.set("isAssetPublishing", false);
-        self.set("errorMsg", "There is some problem while saving asset. Please try again.");
-        self.showingErrorMsgInDesigner(data);
       });
     },
     showAssetList(value) {
@@ -1203,9 +1168,9 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
         self.importActionSettingsFromString(importedAsset.definition);
         self.set("isAssetImporting", false);
       }.bind(this)).catch(function(data){
+        self.set("errorMsg", "There is some problem while importing asset.");
+        self.set("data", data);
         self.set("isAssetImporting", false);
-        self.set("errorMsg", "There is some problem while importing asset. Please try again.");
-        self.showingErrorMsgInDesigner(data);
       });
     },
     showAssetNodeList(value) {
@@ -1223,9 +1188,9 @@ export default Ember.Component.extend(FindNodeMixin, Validations, {
         self.importActionNodeFromString(importedAsset.definition);
         self.set("isAssetImporting", false);
       }.bind(this)).catch(function(data){
+        self.set("errorMsg", "There is some problem while importing asset.");
+        self.set("data", data);
         self.set("isAssetImporting", false);
-        self.set("errorMsg", "There is some problem while importing asset. Please try again.");
-        self.showingErrorMsgInDesigner(data);
       });
     }
   }
