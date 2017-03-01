@@ -181,9 +181,6 @@ VIEWS_DIR_PROPERTY = "views.dir"
 
 ACTIVE_INSTANCE_PROPERTY = "active.instance"
 
-# web server startup timeout
-WEB_SERVER_STARTUP_TIMEOUT = "server.startup.web.timeout"
-
 #Common setup or upgrade message
 SETUP_OR_UPGRADE_MSG = "- If this is a new setup, then run the \"ambari-server setup\" command to create the user\n" \
                        "- If this is an upgrade of an existing setup, run the \"ambari-server upgrade\" command.\n" \
@@ -979,15 +976,6 @@ def remove_password_file(filename):
       return 1
   pass
   return 0
-
-
-def get_web_server_startup_timeout(properties):
-  timeout = properties[WEB_SERVER_STARTUP_TIMEOUT]
-  if timeout is None or timeout == "":
-    timeout = 120
-  else:
-    timeout = int(timeout)
-  return timeout
 
 
 def get_original_master_key(properties, options = None):
