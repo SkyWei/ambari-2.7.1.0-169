@@ -66,7 +66,7 @@ export default Ember.Route.extend(UILoggerMixin, {
   },
 
   model(params) {
-    let selectedWs = this.store.peekAll('worksheet').filterBy('title', params.worksheetId).get('firstObject');
+    let selectedWs = this.store.peekAll('worksheet').filterBy('id', params.worksheetId.toLowerCase()).get('firstObject');
 
     if(selectedWs) {
       selectedWs.set('selected', true);
@@ -299,6 +299,7 @@ export default Ember.Route.extend(UILoggerMixin, {
       this.send('showQueryResultContainer');
 
       let payload ={
+        "id":this.get('controller.model').get('id'),
         "title":worksheetTitle,
         "dataBase":dbid,
         "forcedContent":queryInput,
@@ -320,9 +321,8 @@ export default Ember.Route.extend(UILoggerMixin, {
             self.get('controller').set('isJobCreated', false);
             let jobDetails = self.store.peekRecord('job', data.job.id);
             console.log(jobDetails);
-            self.send('getJobResult', data, payload.title, jobDetails);
+            self.send('getJobResult', data, payload.id, jobDetails);
             self.get('logger').success('Query has been submitted.');
-            self.transitionTo('queries.query.loading');
 
           }, (error) => {
             console.log('error', error);
@@ -362,10 +362,15 @@ export default Ember.Route.extend(UILoggerMixin, {
         let existingWorksheets = self.get('store').peekAll('worksheet');
         let myWs = null;
         if(existingWorksheets.get('length') > 0) {
-          myWs = existingWorksheets.filterBy('title', payloadTitle).get('firstObject');
+          myWs = existingWorksheets.filterBy('id', payloadTitle).get('firstObject');
         }
         if(!Ember.isBlank(jobDetails.get("dagId"))) {
-          self.get('controller.model').set('tezUrl', self.get("tezViewInfo").getTezViewURL() + jobDetails.get("dagId"));
+          let tezData = self.get("tezViewInfo").getTezViewData();
+          if(tezData && tezData.error) {
+            self.get('controller.model').set('tezError', tezData.errorMsg);
+          } else if(tezData.tezUrl) {
+            self.get('controller.model').set('tezUrl', tezData.tezUrl + jobDetails.get("dagId"));
+          }
         }
         myWs.set('queryResult', data);
         myWs.set('isQueryRunning', false);
@@ -384,8 +389,14 @@ export default Ember.Route.extend(UILoggerMixin, {
           self.get('controller.model').set('visualExplainJson', null);
         }
 
-        if( self.paramsFor('queries.query').worksheetId == payloadTitle){
-          self.transitionTo('queries.query.results');
+        if( self.paramsFor('queries.query').worksheetId && (self.paramsFor('queries.query').worksheetId.toLowerCase() == payloadTitle)){
+          self.transitionTo('queries.query.loading');
+
+          Ember.run.later(() => {
+            self.transitionTo('queries.query.results');
+          }, 1 * 100);
+
+
         }
 
       }, function(error) {
@@ -395,7 +406,7 @@ export default Ember.Route.extend(UILoggerMixin, {
     },
 
     showVisualExplain(payloadTitle){
-       if( this.paramsFor('queries.query').worksheetId == payloadTitle){
+       if( this.paramsFor('queries.query').worksheetId && this.paramsFor('queries.query').worksheetId.toLowerCase() === payloadTitle){
          Ember.run.later(() => {
            this.transitionTo('queries.query.visual-explain');
          }, 1);
@@ -443,14 +454,14 @@ export default Ember.Route.extend(UILoggerMixin, {
       let existingWorksheets = this.get('store').peekAll('worksheet');
       let myWs = null;
       if(existingWorksheets.get('length') > 0) {
-        myWs = existingWorksheets.filterBy('title', payloadTitle).get('firstObject');
+        myWs = existingWorksheets.filterBy('id', payloadTitle.toLowerCase()).get('firstObject');
       }
 
       this.transitionTo('queries.query.loading');
 
       Ember.run.later(() => {
         this.transitionTo('queries.query.results', myWs);
-      }, 1 * 1000);
+      }, 1 * 100);
     },
 
     goPrevPage(payloadTitle){
@@ -472,14 +483,14 @@ export default Ember.Route.extend(UILoggerMixin, {
       let existingWorksheets = this.get('store').peekAll('worksheet');
       let myWs = null;
       if(existingWorksheets.get('length') > 0) {
-        myWs = existingWorksheets.filterBy('title', payloadTitle).get('firstObject');
+        myWs = existingWorksheets.filterBy('id', payloadTitle.toLowerCase()).get('firstObject');
       }
 
       this.transitionTo('queries.query.loading');
 
       Ember.run.later(() => {
         this.transitionTo('queries.query.results', myWs);
-      }, 1 * 1000);
+      }, 1 * 100);
     },
 
     openWorksheetModal(){
