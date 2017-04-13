@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 "use strict";
+
 var App = require('app');
 
 App.SplashController = Ember.ObjectController.extend({
