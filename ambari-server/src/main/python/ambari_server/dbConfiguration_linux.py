@@ -634,6 +634,9 @@ class PGConfig(LinuxDBMSConfig):
         else:
           out, err = process.communicate()
           retcode = process.returncode
+          print "retcode => %s" % str(retcode)
+          print "stdout => %s" % str(out)
+          print "stderr => %s" % str(err)
           pg_status, retcode, out, err = PGConfig._get_postgre_status()
         if pg_status == PGConfig.PG_STATUS_RUNNING:
           print_info_msg("Postgres process is running. Returning...")
