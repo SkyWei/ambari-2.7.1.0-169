@@ -170,17 +170,11 @@ public class UpgradeCatalog251Test {
   @Test
   public void testExecuteDMLUpdates() throws Exception {
     Method addNewConfigurationsFromXml = AbstractUpgradeCatalog.class.getDeclaredMethod("addNewConfigurationsFromXml");
-    Method updateSTORMConfigs = UpgradeCatalog251.class.getDeclaredMethod("updateSTORMConfigs");
-
     UpgradeCatalog251 upgradeCatalog251 = createMockBuilder(UpgradeCatalog251.class)
             .addMockedMethod(addNewConfigurationsFromXml)
-            .addMockedMethod(updateSTORMConfigs)
             .createMock();
 
     upgradeCatalog251.addNewConfigurationsFromXml();
-    expectLastCall().once();
-
-    upgradeCatalog251.updateSTORMConfigs();
     expectLastCall().once();
 
     replay(upgradeCatalog251);
