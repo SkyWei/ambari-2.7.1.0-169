@@ -42,11 +42,61 @@ class HDP26StackAdvisor(HDP25StackAdvisor):
         "HBASE": self.recommendHBASEConfigurations,
         "YARN": self.recommendYARNConfigurations,
         "KAFKA": self.recommendKAFKAConfigurations,
-        "BEACON": self.recommendBEACONConfigurations
+        "BEACON": self.recommendBEACONConfigurations,
+        "STORM": self.recommendSTORMConfigurations
       }
       parentRecommendConfDict.update(childRecommendConfDict)
       return parentRecommendConfDict
 
+  def recommendSTORMConfigurations(self, configurations, clusterData, services, hosts):
+    """
+    In HDF-2.6.1 we introduced a new way of doing Auto Credentials with services such as
+    HDFS, HIVE, HBASE. This method will update the required configs for autocreds if the users installs
+    STREAMLINE service.
+    """
+    super(HDP26StackAdvisor, self).recommendStormConfigurations(configurations, clusterData, services, hosts)
+    storm_site = self.getServicesSiteProperties(services, "storm-site")
+    storm_env = self.getServicesSiteProperties(services, "storm-env")
+    putStormSiteProperty = self.putProperty(configurations, "storm-site", services)
+    putStormSiteAttributes = self.putPropertyAttribute(configurations, "storm-site")
+    security_enabled = self.isSecurityEnabled(services)
+    servicesList = [service["StackServices"]["service_name"] for service in services["services"]]
+
+    if storm_env and storm_site and security_enabled and 'STREAMLINE' in servicesList:
+      storm_nimbus_impersonation_acl = storm_site["nimbus.impersonation.acl"] if "nimbus.impersonation.acl" in storm_site else None
+      streamline_env = self.getServicesSiteProperties(services, "streamline-env")
+      _streamline_principal_name = streamline_env['streamline_principal_name'] if 'streamline_principal_name' in streamline_env else None
+      if _streamline_principal_name is not None and storm_nimbus_impersonation_acl is not None:
+        streamline_bare_principal = get_bare_principal(_streamline_principal_name)
+        storm_nimbus_impersonation_acl.replace('{{streamline_bare_principal}}', streamline_bare_principal)
+        putStormSiteProperty('nimbus.impersonation.acl', storm_nimbus_impersonation_acl)
+      
+      storm_nimbus_autocred_plugin_classes = storm_site["nimbus.autocredential.plugins.classes"] if "nimbus.autocredential.plugins.classes" in storm_site else None
+      if storm_nimbus_autocred_plugin_classes is not None:
+        new_storm_nimbus_autocred_plugin_classes = ['org.apache.storm.hdfs.security.AutoHDFS',
+                                                    'org.apache.storm.hbase.security.AutoHBase',
+                                                    'org.apache.storm.hive.security.AutoHive']
+        new_conf = DefaultStackAdvisor.appendToYamlString(storm_nimbus_autocred_plugin_classes,
+                                      new_storm_nimbus_autocred_plugin_classes)
+
+        putStormSiteProperty("nimbus.autocredential.plugins.classes", new_conf)
+      else:
+        putStormSiteProperty("nimbus.autocredential.plugins.classes", "['org.apache.storm.hdfs.security.AutoHDFS', 'org.apache.storm.hbase.security.AutoHBase', 'org.apache.storm.hive.security.AutoHive']")
+
+
+      storm_nimbus_credential_renewer_classes = storm_site["nimbus.credential.renewers.classes"] if "nimbus.credential.renewers.classes" in storm_site else None
+      if storm_nimbus_credential_renewer_classes is not None:
+        new_storm_nimbus_credential_renewer_classes_array = ['org.apache.storm.hdfs.security.AutoHDFS',
+                                                             'org.apache.storm.hbase.security.AutoHBase',
+                                                             'org.apache.storm.hive.security.AutoHive']
+        new_conf = DefaultStackAdvisor.appendToYamlString(storm_nimbus_credential_renewer_classes,
+                                      new_storm_nimbus_credential_renewer_classes_array)
+        putStormSiteProperty("nimbus.autocredential.plugins.classes", new_conf)
+      else:
+        putStormSiteProperty("nimbus.credential.renewers.classes", "['org.apache.storm.hdfs.security.AutoHDFS', 'org.apache.storm.hbase.security.AutoHBase', 'org.apache.storm.hive.security.AutoHive']")
+      putStormSiteProperty("nimbus.credential.renewers.freq.secs", "82800")
+    pass  
+      
   def recommendBEACONConfigurations(self, configurations, clusterData, services, hosts):
     beaconEnvProperties = self.getSiteProperties(services['configurations'], 'beacon-env')
     putbeaconEnvProperty = self.putProperty(configurations, "beacon-env", services)
