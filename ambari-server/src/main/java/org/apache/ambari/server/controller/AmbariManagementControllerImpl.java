@@ -4038,7 +4038,7 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
 
     if (actionRequest.isCommand()) {
       customCommandExecutionHelper.addExecutionCommandsToStage(actionExecContext, stage,
-          requestProperties);
+          requestProperties, jsons);
     } else {
       actionExecutionHelper.addExecutionCommandsToStage(actionExecContext, stage, requestProperties);
     }
