@@ -146,17 +146,21 @@ public class UpgradeCatalog251 extends AbstractUpgradeCatalog {
         for (final Cluster cluster : clusterMap.values()) {
           Set<String> installedServices = cluster.getServices().keySet();
 
-          if (installedServices.contains("STORM") && cluster.getSecurityType() == SecurityType.KERBEROS) {
+          // Technically, this should be added when the cluster is Kerberized on HDP 2.6.1, but is safe to add even
+          // without security or on an older stack version (such as HDP 2.5)
+          // The problem is that Kerberizing a cluster does not invoke Stack Advisor and has no easy way of setting
+          // these configs, so instead, add them as long as Storm is present.
+          if (installedServices.contains("STORM")) {
             Config stormEnv = cluster.getDesiredConfigByType(STORM_ENV_CONFIG);
             String content = stormEnv.getProperties().get("content");
             if (content != null && !content.contains("STORM_AUTOCREDS_LIB_DIR")) {
               Map<String, String> newProperties = new HashMap<>();
-              String stormEnvConfigs = "\n #set storm-auto creds \n" +
-                  "# check if storm_jaas.conf in config , only enable storm_auto_creds in secure mode.\n " +
-                  "STORM_JAAS_CONF=$STORM_HOME/conf/storm_jaas.conf \n" +
-                  "STORM_AUTOCREDS_LIB_DIR=$STORM_HOME/external/storm-autocreds \n" +
-                  "if [ -f $STORM_JAAS_CONF ] &amp;&amp; [ -d $STORM_AUTOCREDS_LIB_DIR ]; then \n" +
-                  "   export STORM_EXT_CLASSPATH=$STORM_AUTOCREDS_LIB_DIR \n" +
+              String stormEnvConfigs = "\n# set storm-auto creds\n" +
+                  "# check if storm_jaas.conf in config, only enable storm_auto_creds in secure mode.\n" +
+                  "STORM_JAAS_CONF=$STORM_HOME/conf/storm_jaas.conf\n" +
+                  "STORM_AUTOCREDS_LIB_DIR=$STORM_HOME/external/storm-autocreds\n" +
+                  "if [ -f $STORM_JAAS_CONF ] && [ -d $STORM_AUTOCREDS_LIB_DIR ]; then\n" +
+                  "  export STORM_EXT_CLASSPATH=$STORM_AUTOCREDS_LIB_DIR\n" +
                   "fi\n";
               content += stormEnvConfigs;
               newProperties.put("content", content);
