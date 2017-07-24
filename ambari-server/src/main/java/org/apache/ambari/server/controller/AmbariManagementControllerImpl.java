@@ -3752,6 +3752,14 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
 
     params.put(AmbariCustomCommandExecutionHelper.MULTI_SERVICES_DECOM_REQUEST, "true");
 
+    for (String masterName : masterSlaveHostsMap.keySet()) {
+      if (!isDecommission) {
+        params.put(masterName + "_" + AmbariCustomCommandExecutionHelper.DECOM_INCLUDED_HOSTS, StringUtils.join(masterSlaveHostsMap.get(masterName).toArray(), ","));
+      }
+    }
+
+    params.put(AmbariCustomCommandExecutionHelper.MULTI_SERVICES_DECOM_REQUEST, "true");
+
     //Create filter for command
     List<RequestResourceFilter> resourceFilters = new ArrayList<>(serviceMasterMap.size());
     for (String serviceName : serviceMasterMap.keySet()) {
